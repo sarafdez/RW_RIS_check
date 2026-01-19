@@ -14,7 +14,7 @@ def load_retraction_watch():
     rw_df = pd.read_csv(RW_URL)
 
     metadata = {
-        "downloaded_on": datetime.utcnow().isoformat(timespec="seconds"),
+        "downloaded_on": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         "n_records": len(rw_df),
         "source": "Retraction Watch public GitHub CSV",
         "url": RW_URL
