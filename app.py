@@ -79,7 +79,7 @@ with colC:
                 "source": rw_meta.get("source"),
                 "downloaded_on": rw_meta.get("downloaded_on"),
                 "records": rw_meta.get("n_records"),
-                "source_url": rw_meta.get("source_url"),
+                "source_url": rw_meta.get("url"),
             })
 
 if not uploaded:
