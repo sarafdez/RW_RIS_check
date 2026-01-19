@@ -148,8 +148,6 @@ with st.spinner("Running title matching…"):
     
 st.success(f"Matching completed in {elapsed:.2f} seconds")
 
-st.write(exact_matches.columns.tolist())
-
 
 # ---- Filtering ----
 
