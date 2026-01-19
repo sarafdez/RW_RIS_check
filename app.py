@@ -153,12 +153,9 @@ st.write(exact_matches.columns.tolist())
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
+rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi_ris", "doi_rw"]
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
-
-
-
 
 if run_fuzzy and not fuzzy_matches.empty:
     rw_fuzzy = fuzzy_matches[rw_cols].copy()
@@ -168,7 +165,7 @@ else:
 
 # ---- Summary ----
 st.subheader("Results")
-st.caption("Columns shown below are from the Retraction Watch database. Manually verify these results.")
+st.caption("Manually verify these results.")
 
 res1, res2, res3 = st.columns(3)
 res1.metric("DOI matches", int(len(rw_doi)))
