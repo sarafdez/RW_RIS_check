@@ -115,6 +115,41 @@ def report_basic_checks(df):
 #    matched["match_type"] = "title_exact"
 #    return matched
 
+def match_by_doi(review_df, rw_df, key="doi"):
+    left = review_df.dropna(subset=[key]).copy()
+    right = rw_df.dropna(subset=[key]).copy()
+
+    matched = left.merge(
+        right,
+        on=key,
+        how="inner",
+        suffixes=("_ris", "_rw"),
+    )
+
+    if "Record ID" in matched.columns:
+        matched = matched.drop_duplicates(subset=[key, "Record ID"])
+
+    matched["match_type"] = "doi"
+    return matched
+
+def match_by_title_exact(review_df, rw_df, key="title_norm"):
+    left = review_df.dropna(subset=[key]).copy()
+    right = rw_df.dropna(subset=[key]).copy()
+
+    matched = left.merge(
+        right,
+        on=key,
+        how="inner",
+        suffixes=("_ris", "_rw"),
+    )
+
+    if "Record ID" in matched.columns:
+        matched = matched.drop_duplicates(subset=[key, "Record ID"])
+
+    matched["match_type"] = "title_exact"
+    return matched
+
+
 
 def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
     rw_titles = rw_df[key].dropna().astype(str).unique().tolist()
