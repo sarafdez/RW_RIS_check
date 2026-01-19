@@ -211,7 +211,13 @@ with tabs[3]:
     if len(combined) == 0:
         st.write("No matches found.")
     else:
-        combined_unique = combined.drop_duplicates(subset=["doi_norm", "Title", "match_type"])
+        combined_unique = combined.copy()
+        for col in combined_unique.columns:
+            combined_unique[col] = combined_unique[col].map(
+            lambda x: repr(x) if isinstance(x, (list, dict, set, tuple)) else x
+        )
+
+        combined_unique = combined_unique.drop_duplicates()
         st.dataframe(_prep_for_display(combined_unique), use_container_width=True, column_config=doi_col_config)
 
 with tabs[4]:
