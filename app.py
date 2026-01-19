@@ -44,8 +44,8 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
     df = df.copy()
     df["doi"] = df["doi"].apply(normalize_doi)
     df["title_norm"] = df["primary_title"].apply(normalize_title)
-    #df = df["title_norm"].apply(filter_bad_titles)
-    
+    df["title_ok"] = df["title_norm"].apply(filter_bad_titles)
+        
     return df
 
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading Retraction Watch database…")
