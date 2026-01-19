@@ -92,7 +92,7 @@ def report_basic_checks(df):
     print()
 
 
-def match_by_doi(review_df, rw_df, key="doi"):
+def match_by_doi(review_df, rw_df, key="doi_norm"):
     left = review_df.dropna(subset=[key]).copy()
     right = rw_df.dropna(subset=[key]).copy()
 
