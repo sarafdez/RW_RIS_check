@@ -87,6 +87,7 @@ doi_col_config = {
 
 # ---- Load RW ----
 rw_df, rw_meta = get_retraction_watch()
+rw_df["title_ok"] = rw_df["title_norm"].apply(filter_bad_titles)
 
 
 # ---- Options ----
@@ -132,12 +133,12 @@ with st.spinner("Running title matching…"):
     start = time.perf_counter()
     
     doi_matches = match_by_doi(review_df, rw_df)
-    exact_matches = match_by_title_exact(review_df[review_df["title_ok"]], rw_df)
+    exact_matches = match_by_title_exact(review_df[review_df["title_ok"]], rw_df[rw_df["title_ok"]])
     
     if run_fuzzy:
         fuzzy_matches = match_by_title_fuzzy(
             review_df[review_df["title_ok"]],
-            rw_df,
+            rw_df[rw_df["title_ok"]],
             threshold=FUZZY_THRESHOLD,
         )
     else:
