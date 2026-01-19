@@ -83,6 +83,7 @@ doi_col_config = {
 rw_df, rw_meta = get_retraction_watch()
 
 
+# ---- Options ----
 colA, colB, colC = st.columns([2, 1, 1])
 with colA:
     uploaded = st.file_uploader("Upload a RIS file", type=["ris", "txt"])
@@ -104,8 +105,9 @@ with colC:
 if not uploaded:
     st.info("Upload a RIS file to begin.")
     st.stop()
-    
-run_fuzzy = st.checkbox("Run fuzzy title matching (slower)", value=False)
+
+st.info("Fuzzy title matching is optional and can be slow for large RIS files. Select the option below to enable it.")
+run_fuzzy = st.checkbox("Run fuzzy title matching", value=False)
 
 # ---- Load review data ----
 review_df = _read_ris(uploaded)
