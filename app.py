@@ -6,14 +6,7 @@ import rispy
 import streamlit as st
 import time
 
-from utils import (
-    load_retraction_watch,
-    normalize_doi,
-    normalize_title,
-    match_by_doi,
-    match_by_title_exact,
-    match_by_title_fuzzy,
-)
+from utils import *
 
 # ---- Config ----
 st.set_page_config(page_title="RIS ↔ Retraction Watch overlap", layout="wide")
