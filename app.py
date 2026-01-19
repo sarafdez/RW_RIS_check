@@ -94,9 +94,9 @@ qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 with st.spinner("Running title matching…"):
     start = time.perf_counter()
     doi_matches = match_by_doi(review_df, rw_df)
-    exact_matches = match_by_title_exact(review_df, rw_df)
+    exact_matches = match_by_title_exact(review_df[review_df["title_ok"]], rw_df)
     fuzzy_matches = match_by_title_fuzzy(
-        review_df,
+        review_df[review_df["title_ok"]],
         rw_df,
         threshold=FUZZY_THRESHOLD,
     )
@@ -187,7 +187,7 @@ combined = (
         ],
         ignore_index=True,
     )
-    .drop_duplicates(subset=["doi", "Title", "match_type"])
+    #.drop_duplicates(subset=["doi", "Title", "match_type"])
 )
 
 csv_bytes = combined.to_csv(index=False).encode("utf-8")
