@@ -172,8 +172,20 @@ res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzz
 
 
 # ---- Show results ----
-tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "Raw RIS"])
+tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches - unique", "Raw RIS"])
 st.caption("Title-> RW, primary_title-> RIS, OriginalPaperDOI-> RW, doi-> RIS")
+
+combined = (
+    pd.concat(
+        [
+            rw_doi.assign(match_type="doi"),
+            rw_exact.assign(match_type="title_exact"),
+            rw_fuzzy.assign(match_type="title_fuzzy"),
+        ],
+        ignore_index=True,
+    )
+    #.drop_duplicates(subset=["doi", "Title", "match_type"])
+)
 
 with tabs[0]:
     if len(rw_doi) == 0:
@@ -194,25 +206,20 @@ with tabs[2]:
         st.write("No fuzzy title matches found.")
     else:
         st.dataframe(_prep_for_display(rw_fuzzy), use_container_width=True, column_config=doi_col_config)
-
+        
 with tabs[3]:
+    if len(combined) == 0:
+        st.write("No matches found.")
+    else:
+        combined_unique = combined.drop_duplicates()
+        st.dataframe(_prep_for_display(combined_unique), use_container_width=True, column_config=doi_col_config)
+
+with tabs[4]:
     st.dataframe(review_df, use_container_width=True)
 
 
 # ---- Download ----
 st.subheader("Download")
-
-combined = (
-    pd.concat(
-        [
-            rw_doi.assign(match_type="doi"),
-            rw_exact.assign(match_type="title_exact"),
-            rw_fuzzy.assign(match_type="title_fuzzy"),
-        ],
-        ignore_index=True,
-    )
-    #.drop_duplicates(subset=["doi", "Title", "match_type"])
-)
 
 csv_bytes = combined.to_csv(index=False).encode("utf-8")
 st.download_button(
