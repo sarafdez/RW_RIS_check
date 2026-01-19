@@ -155,7 +155,7 @@ rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "Or
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
-st.info(print(rw_exact.columns))
+st.write(rw_exact.columns.tolist())
 
 
 if run_fuzzy and not fuzzy_matches.empty:
