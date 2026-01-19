@@ -152,16 +152,13 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 # ---- Filtering ----
 
 rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
-
-#rw_doi   = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
-#rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
-
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
+print(rw_exact.columns)
+
 
 if run_fuzzy and not fuzzy_matches.empty:
-    #rw_fuzzy = rw_df[rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna())][rw_cols].copy()
     rw_fuzzy = fuzzy_matches[rw_cols].copy()
 else:
     rw_fuzzy = pd.DataFrame(columns=rw_cols)
