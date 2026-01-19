@@ -1,0 +1,6 @@
+pandas
+rispy
+rapidfuzz
+requests
+streamlit
+python-dateutil
