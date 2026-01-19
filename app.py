@@ -27,7 +27,7 @@ How matching works:
 """
 )
 
-# Fixed fuzzy threshold 
+# ---- Variables and functions ----
 FUZZY_THRESHOLD = 90
 
 def _read_ris(uploaded_file) -> pd.DataFrame:
@@ -54,6 +54,30 @@ def get_retraction_watch():
     rw_df["doi"] = rw_df["OriginalPaperDOI"].apply(normalize_doi)
     rw_df["title_norm"] = rw_df["Title"].apply(normalize_title)
     return rw_df, meta
+
+def _doi_url(doi: str) -> str:
+    """Turn a DOI string into a doi.org URL (empty string if missing)."""
+    if doi is None:
+        return ""
+    doi = str(doi).strip()
+    if doi == "" or doi.lower() == "nan":
+        return ""
+    return f"https://doi.org/{doi}"
+
+def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if "OriginalPaperDOI" in out.columns:
+        out["OriginalPaperDOI"] = out["OriginalPaperDOI"].apply(_doi_url)
+    return out
+
+doi_col_config = {
+    "OriginalPaperDOI": st.column_config.LinkColumn(
+        "OriginalPaperDOI",
+        display_text=r"https?://doi\.org/(.*)",
+        help="Opens the DOI on doi.org",
+    )
+}
+
 
 # ---- Load RW ----
 rw_df, rw_meta = get_retraction_watch()
@@ -83,7 +107,9 @@ if not uploaded:
     
 run_fuzzy = st.checkbox("Run fuzzy title matching (slower)", value=False)
 
+# ---- Load review data ----
 review_df = _read_ris(uploaded)
+
 
 # ---- Quality checks ----
 qc1, qc2, qc3 = st.columns(3)
@@ -92,8 +118,7 @@ qc2.metric("Missing DOI", int(review_df["doi"].isna().sum()))
 qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 
 
-
-###### MATCHING #########
+# ---- Matching ----
 
 with st.spinner("Running title matching…"):
     start = time.perf_counter()
@@ -115,35 +140,18 @@ with st.spinner("Running title matching…"):
 st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 
-###### FILTERING #########
+# ---- Filtering ----
 
 rw_cols = ["Title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
 
-rw_doi = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
-
+rw_doi   = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
 rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
 
-# this removes very short titles from visualization (not from matching)
-rw_fuzzy = rw_df[
-    (rw_df["title_norm"].str.len() >= 5)
-    & (rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna()))
-][rw_cols].copy()
-
-
-def _doi_url(doi: str) -> str:
-    """Turn a DOI string into a doi.org URL (empty string if missing)."""
-    if doi is None:
-        return ""
-    doi = str(doi).strip()
-    if doi == "" or doi.lower() == "nan":
-        return ""
-    return f"https://doi.org/{doi}"
-
-def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if "OriginalPaperDOI" in out.columns:
-        out["OriginalPaperDOI"] = out["OriginalPaperDOI"].apply(_doi_url)
-    return out
+if run_fuzzy and not fuzzy_matches.empty:
+    rw_fuzzy = rw_df[rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna())][rw_cols].copy()
+else:
+    rw_fuzzy = pd.DataFrame(columns=rw_cols)
+    
 
 # ---- Summary ----
 st.subheader("Results")
@@ -154,16 +162,9 @@ res1.metric("DOI matches", int(len(rw_doi)))
 res2.metric("Exact title matches", int(len(rw_exact)))
 res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzzy)))
 
-# Tabs
-tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "Raw RIS"])
 
-doi_col_config = {
-    "OriginalPaperDOI": st.column_config.LinkColumn(
-        "OriginalPaperDOI",
-        display_text=r"https?://doi\.org/(.*)",
-        help="Opens the DOI on doi.org",
-    )
-}
+# ---- Show results ----
+tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "Raw RIS"])
 
 with tabs[0]:
     if len(rw_doi) == 0:
@@ -178,6 +179,8 @@ with tabs[1]:
         st.dataframe(_prep_for_display(rw_exact), use_container_width=True, column_config=doi_col_config)
 
 with tabs[2]:
+    if not run_fuzzy:
+        st.info("Fuzzy title matching is turned off. Enable it above to run.")
     if len(rw_fuzzy) == 0:
         st.write("No fuzzy title matches found.")
     else:
@@ -185,6 +188,7 @@ with tabs[2]:
 
 with tabs[3]:
     st.dataframe(review_df, use_container_width=True)
+
 
 # ---- Download ----
 st.subheader("Download")
