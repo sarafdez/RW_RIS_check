@@ -89,9 +89,15 @@ qc2.metric("Missing DOI", int(review_df["doi"].isna().sum()))
 qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 
 # ---- Matching ----
-doi_matches = match_by_doi(review_df, rw_df)
-exact_matches = match_by_title_exact(review_df, rw_df)
-fuzzy_matches = match_by_title_fuzzy(review_df, rw_df, threshold=FUZZY_THRESHOLD)
+with st.spinner("Running title matching…"):
+    doi_matches = match_by_doi(review_df, rw_df)
+    exact_matches = match_by_title_exact(review_df, rw_df)
+    fuzzy_matches = match_by_title_fuzzy(
+        review_df,
+        rw_df,
+        threshold=FUZZY_THRESHOLD,
+    )
+
 
 # ---- Pull matched RW rows for display ----
 rw_cols = ["Title", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
@@ -116,9 +122,7 @@ def _doi_url(doi: str) -> str:
         return ""
     return f"https://doi.org/{doi}"
 
-
 def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare a matched RW table for display in Streamlit."""
     out = df.copy()
     if "OriginalPaperDOI" in out.columns:
         out["OriginalPaperDOI"] = out["OriginalPaperDOI"].apply(_doi_url)
