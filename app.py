@@ -99,7 +99,7 @@ with colB:
     if rw_meta.get("downloaded_on"):
         st.caption(f"Downloaded on: {rw_meta['downloaded_on']}")
 with colC:
-    st.metric("Unique DOIs in RW", f"{rw_df['doi'].dropna().nunique():,}")
+    st.metric("Unique DOIs in RW", f"{rw_df['doi_norm'].dropna().nunique():,}")
     if rw_meta.get("url"):
         with st.expander("Retraction Watch metadata", expanded=False):
             st.write({
