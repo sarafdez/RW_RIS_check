@@ -151,7 +151,7 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi_ris"]
+rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
 
 #rw_doi   = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
 #rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
