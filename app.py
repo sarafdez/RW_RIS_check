@@ -173,6 +173,7 @@ res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzz
 
 # ---- Show results ----
 tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "Raw RIS"])
+st.caption("Title-> RW, primary_title-> RIS")
 
 with tabs[0]:
     if len(rw_doi) == 0:
