@@ -30,7 +30,6 @@ How matching works:
 # Fixed fuzzy threshold 
 FUZZY_THRESHOLD = 90
 
-
 def _read_ris(uploaded_file) -> pd.DataFrame:
     text = uploaded_file.getvalue().decode("utf-8", errors="replace")
     records = rispy.load(io.StringIO(text))
@@ -81,6 +80,8 @@ with colC:
 if not uploaded:
     st.info("Upload a RIS file to begin.")
     st.stop()
+    
+run_fuzzy = st.checkbox("Run fuzzy title matching (slower)", value=False)
 
 review_df = _read_ris(uploaded)
 
@@ -90,22 +91,32 @@ qc1.metric("RIS records", f"{len(review_df):,}")
 qc2.metric("Missing DOI", int(review_df["doi"].isna().sum()))
 qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 
-# ---- Matching ----
+
+
+###### MATCHING #########
+
 with st.spinner("Running title matching…"):
     start = time.perf_counter()
+    
     doi_matches = match_by_doi(review_df, rw_df)
     exact_matches = match_by_title_exact(review_df[review_df["title_ok"]], rw_df)
-    fuzzy_matches = match_by_title_fuzzy(
-        review_df[review_df["title_ok"]],
-        rw_df,
-        threshold=FUZZY_THRESHOLD,
-    )
+    
+    if run_fuzzy:
+        fuzzy_matches = match_by_title_fuzzy(
+            review_df[review_df["title_ok"]],
+            rw_df,
+            threshold=FUZZY_THRESHOLD,
+        )
+    else:
+        fuzzy_matches = pd.DataFrame() 
+    
     elapsed = time.perf_counter() - start
     
 st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 
-# ---- Pull matched RW rows for display ----
+###### FILTERING #########
+
 rw_cols = ["Title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
 
 rw_doi = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
