@@ -25,7 +25,7 @@ The app downloads the Retraction Watch database at most once every 24h.
 How matching works:
 1. **Normalize DOIs** and **normalize titles** (lowercasing + stripping punctuation).
 2. **DOI exact match** (fast + most reliable).
-3. **Exact title match** (on normalized titles) and filter out bad/short titles from the RIS file.
+3. **Exact title match** (on normalized titles) and filter out bad/short titles.
 4. **Fuzzy title matching** using token-set similarity.
 
 
@@ -34,7 +34,7 @@ How matching works:
 )
 
 # ---- Variables and functions ----
-FUZZY_THRESHOLD = 90
+FUZZY_THRESHOLD = 95
 
 def _read_ris(uploaded_file) -> pd.DataFrame:
     text = uploaded_file.getvalue().decode("utf-8", errors="replace")
@@ -53,6 +53,7 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
         
     return df
 
+# this function is cached to avoid re-downloading RW data too often
 @st.cache_data(ttl=24 * 3600, show_spinner="Loading Retraction Watch database…")
 def get_retraction_watch():
     rw_df, meta = load_retraction_watch()
@@ -62,7 +63,6 @@ def get_retraction_watch():
     return rw_df, meta
 
 def _doi_url(doi: str) -> str:
-    """Turn a DOI string into a doi.org URL (empty string if missing)."""
     if doi is None:
         return ""
     doi = str(doi).strip()
@@ -151,13 +151,18 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
+rw_cols = ["Title_rw", "Author_rw", "RetractionNature_rw", "Reason_rw", "OriginalPaperDOI_rw"]
 
-rw_doi   = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
-rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
+#rw_doi   = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
+#rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
+
+rw_doi = doi_matches[rw_cols].copy()
+rw_exact = exact_matches[rw_cols].copy()
+
 
 if run_fuzzy and not fuzzy_matches.empty:
-    rw_fuzzy = rw_df[rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna())][rw_cols].copy()
+    #rw_fuzzy = rw_df[rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna())][rw_cols].copy()
+    rw_fuzzy = fuzzy_matches[rw_cols].copy()
 else:
     rw_fuzzy = pd.DataFrame(columns=rw_cols)
     

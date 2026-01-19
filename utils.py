@@ -70,6 +70,7 @@ def normalize_title(title):
 
     return title.strip()
 
+
 def filter_bad_titles(title_norm, min_len=10):
     if not title_norm:
         return False
@@ -93,26 +94,26 @@ def report_basic_checks(df):
 
 # Matching
 
-def match_by_doi(review_df, rw_df, key="doi"):
-    matched = review_df[
-    review_df["doi"].isin(
-        rw_df["doi"].dropna().unique()
-    )
-].copy()
+#def match_by_doi(review_df, rw_df, key="doi"):
+#    matched = review_df[
+#    review_df["doi"].isin(
+#        rw_df["doi"].dropna().unique()
+#    )
+#].copy()
 
-    matched["match_type"] = "doi"
-    return matched
+#    matched["match_type"] = "doi"
+#    return matched
 
 
-def match_by_title_exact(review_df, rw_df, key="title_norm"):
-    rw_titles = set(rw_df.dropna(subset=[key])[key].unique())
-
-    matched = review_df[
-        review_df[key].notna() & review_df[key].isin(rw_titles)
-    ].copy()
-
-    matched["match_type"] = "title_exact"
-    return matched
+#def match_by_title_exact(review_df, rw_df, key="title_norm"):
+#    rw_titles = set(rw_df.dropna(subset=[key])[key].unique())
+#
+#    matched = review_df[
+#        review_df[key].notna() & review_df[key].isin(rw_titles)
+#    ].copy()
+#
+#    matched["match_type"] = "title_exact"
+#    return matched
 
 
 def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
