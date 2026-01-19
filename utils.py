@@ -10,6 +10,20 @@ import requests
 
 RW_URL = "https://gitlab.com/crossref/retraction-watch-data/-/raw/main/retraction_watch.csv"
 
+BAD_TITLES = {
+    "editorial",
+    "index",
+    "correction",
+    "corrigendum",
+    "erratum",
+    "reply",
+    "response",
+    "commentary",
+    "letter",
+    "news",
+}
+
+
 def load_retraction_watch():
     rw_df = pd.read_csv(RW_URL)
 
@@ -55,6 +69,15 @@ def normalize_title(title):
     title = re.sub(r"[^\w\s]", "", title)
 
     return title.strip()
+
+def filter_bad_titles(title_norm, min_len=10):
+    if not title_norm:
+        return False
+    if title_norm in BAD_TITLES:
+        return False
+    if len(title_norm) < min_len:
+        return False
+    return True
 
 
 # Checks
