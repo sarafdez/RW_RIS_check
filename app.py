@@ -47,7 +47,7 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
         df["primary_title"] = None
 
     df = df.copy()
-    df["doi"] = df["doi"].apply(normalize_doi)
+    df["doi_norm"] = df["doi"].apply(normalize_doi)
     df["title_norm"] = df["primary_title"].apply(normalize_title)
     df["title_ok"] = df["title_norm"].apply(filter_bad_titles)
         
@@ -58,7 +58,7 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
 def get_retraction_watch():
     rw_df, meta = load_retraction_watch()
     rw_df = rw_df.copy()
-    rw_df["doi"] = rw_df["OriginalPaperDOI"].apply(normalize_doi)
+    rw_df["doi_norm"] = rw_df["OriginalPaperDOI"].apply(normalize_doi)
     rw_df["title_norm"] = rw_df["Title"].apply(normalize_title)
     return rw_df, meta
 
@@ -151,7 +151,7 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "urls"]
+rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi", "urls"]
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
@@ -173,7 +173,7 @@ res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzz
 
 # ---- Show results ----
 tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "Raw RIS"])
-st.caption("Title-> RW, primary_title-> RIS")
+st.caption("Title-> RW, primary_title-> RIS", "OriginalPaperDOI-> RW, doi-> RIS")
 
 with tabs[0]:
     if len(rw_doi) == 0:
