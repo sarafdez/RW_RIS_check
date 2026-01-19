@@ -106,7 +106,7 @@ if not uploaded:
     st.info("Upload a RIS file to begin.")
     st.stop()
 
-st.info("Fuzzy title matching is optional and can be slow for large RIS files. Select the option below to enable it.")
+st.info("In progress: Fuzzy title matching is optional and can be slow. Select the option below to enable it.")
 run_fuzzy = st.checkbox("Run fuzzy title matching", value=False)
 
 # ---- Load review data ----
