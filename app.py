@@ -52,9 +52,13 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
     df["title_norm"] = df["primary_title"].apply(normalize_title)
     return df
 
+@st.cache_data(ttl=24 * 3600, show_spinner="Loading Retraction Watch database…")
+def get_retraction_watch():
+    return load_retraction_watch()
+
 
 # ---- Load RW ----
-rw_df, rw_meta = load_retraction_watch()
+rw_df, rw_meta = get_retraction_watch()
 rw_df["doi"] = rw_df["OriginalPaperDOI"].apply(normalize_doi)
 rw_df["title_norm"] = rw_df["Title"].apply(normalize_title)
 
