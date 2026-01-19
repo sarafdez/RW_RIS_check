@@ -44,7 +44,7 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
     df = df.copy()
     df["doi"] = df["doi"].apply(normalize_doi)
     df["title_norm"] = df["primary_title"].apply(normalize_title)
-    df = df["title_norm"].apply(filter_bad_titles)
+    #df = df["title_norm"].apply(filter_bad_titles)
     
     return df
 
