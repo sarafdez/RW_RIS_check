@@ -153,7 +153,7 @@ st.write(exact_matches.columns.tolist())
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi_ris", "doi_rw"]
+rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi_rw"]
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
