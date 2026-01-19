@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import rispy
 import streamlit as st
+import time
 
 from utils import (
     load_retraction_watch,
@@ -96,6 +97,7 @@ qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 
 # ---- Matching ----
 with st.spinner("Running title matching…"):
+    start = time.perf_counter()
     doi_matches = match_by_doi(review_df, rw_df)
     exact_matches = match_by_title_exact(review_df, rw_df)
     fuzzy_matches = match_by_title_fuzzy(
@@ -103,20 +105,23 @@ with st.spinner("Running title matching…"):
         rw_df,
         threshold=FUZZY_THRESHOLD,
     )
+    elapsed = time.perf_counter() - start
+    
+st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 
 # ---- Pull matched RW rows for display ----
-rw_cols = ["Title", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
+rw_cols = ["Title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI"]
 
-rw_doi = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].drop_duplicates().copy()
+rw_doi = rw_df[rw_df["doi"].isin(doi_matches["doi"].dropna())][rw_cols].copy()
 
-rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].drop_duplicates().copy()
+rw_exact = rw_df[rw_df["title_norm"].isin(exact_matches["title_norm"].dropna())][rw_cols].copy()
 
 # this removes very short titles from visualization (not from matching)
 rw_fuzzy = rw_df[
     (rw_df["title_norm"].str.len() >= 5)
     & (rw_df["title_norm"].isin(fuzzy_matches["matched_title_norm"].dropna()))
-][rw_cols].drop_duplicates().copy()
+][rw_cols].copy()
 
 
 def _doi_url(doi: str) -> str:
@@ -136,6 +141,8 @@ def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
 
 # ---- Summary ----
 st.subheader("Results")
+st.caption("Columns shown below are from the Retraction Watch database. Manually verify these results.")
+
 res1, res2, res3 = st.columns(3)
 res1.metric("DOI matches", int(len(rw_doi)))
 res2.metric("Exact title matches", int(len(rw_exact)))
