@@ -19,11 +19,17 @@ st.markdown(
     """
 This app matches references in a **RIS** file to the **Retraction Watch** database.
 
+The app downloads the Retraction Watch database at most once every 24h.
+
+
 How matching works:
 1. **Normalize DOIs** and **normalize titles** (lowercasing + stripping punctuation).
 2. **DOI exact match** (fast + most reliable).
-3. **Exact title match** (on normalized titles).
+3. **Exact title match** (on normalized titles) and filter out bad/short titles from the RIS file.
 4. **Fuzzy title matching** using token-set similarity.
+
+
+
 """
 )
 
