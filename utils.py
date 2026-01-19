@@ -103,8 +103,8 @@ def match_by_doi(review_df, rw_df, key="doi"):
         suffixes=("_ris", "_rw"),
     )
 
-    if "Record ID" in matched.columns:
-        matched = matched.drop_duplicates(subset=[key, "Record ID"])
+    #if "Record ID" in matched.columns:
+    #    matched = matched.drop_duplicates(subset=[key, "Record ID"])
 
     matched["match_type"] = "doi"
     return matched
