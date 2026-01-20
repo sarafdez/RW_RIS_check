@@ -130,7 +130,6 @@ def match_by_title_exact(review_df, rw_df, key="title_norm"):
 
 def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
     rw_titles = rw_df[key].dropna().astype(str).unique().tolist()
-    rw_set = set(rw_titles)
 
     def best_match(title):
         if title is None or pd.isna(title):
@@ -139,12 +138,12 @@ def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
         title = str(title).strip()
         if not title:
             return (None, None)
-        
+
         res = process.extractOne(
             title,
             rw_titles,
             scorer=fuzz.token_set_ratio,
-            score_cutoff=threshold,   
+            score_cutoff=threshold,
         )
         if not res:
             return (None, None)
@@ -158,5 +157,17 @@ def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
     )
 
     matched = df.dropna(subset=["matched_title_norm"]).copy()
-    matched["match_type"] = "title_fuzzy"
-    return matched
+
+    if matched.empty:
+        return pd.DataFrame()
+
+    merged = matched.merge(
+        rw_df,
+        left_on="matched_title_norm",
+        right_on=key,
+        how="inner",
+        suffixes=("_review", "_rw"),
+    )
+
+    merged["match_type"] = "title_fuzzy"
+    return merged
