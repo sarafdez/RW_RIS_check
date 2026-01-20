@@ -142,7 +142,7 @@ def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
         res = process.extractOne(
             title,
             rw_titles,
-            scorer=fuzz.token_set_ratio,
+            scorer=fuzz.token_sort_ratio,
             score_cutoff=threshold,
         )
         if not res:
