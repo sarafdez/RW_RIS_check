@@ -17,6 +17,10 @@ st.title("RIS ↔ Retraction Watch overlap")
 # ---- App info ----
 st.markdown(
     """
+    
+    SOME CHANGES 
+    
+    
 This app matches references in a **RIS** file to the **Retraction Watch** database.
 
 The app downloads the Retraction Watch database at most once every 24h.
@@ -172,7 +176,7 @@ res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzz
 
 
 # ---- Show results ----
-tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches - unique", "Raw RIS"])
+tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches", "Raw RIS"])
 st.caption("Title-> RW, primary_title-> RIS, OriginalPaperDOI-> RW, doi-> RIS")
 
 combined = (
