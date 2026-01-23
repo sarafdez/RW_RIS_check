@@ -2,5 +2,6 @@ pandas
 rispy
 rapidfuzz
 requests
-streamlit
+streamlit>=1.32
+altair>=5
 python-dateutil
