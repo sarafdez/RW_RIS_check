@@ -17,10 +17,7 @@ st.title("RIS ↔ Retraction Watch overlap")
 # ---- App info ----
 st.markdown(
     """
-    
-    SOME CHANGES 
-    
-    
+
 This app matches references in a **RIS** file to the **Retraction Watch** database.
 
 The app downloads the Retraction Watch database at most once every 24h.
@@ -155,7 +152,7 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi", "urls"]
+rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
