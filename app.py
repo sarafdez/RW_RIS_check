@@ -27,6 +27,15 @@ st.markdown(
 2. The app matches your references against the Retraction Watch database — by DOI, PubMed ID, exact title, and fuzzy title.
 3. Review matches in the **Results** tabs and manually verify flagged records.
 4. Download the matched records as CSV.
+
+**What it does**
+- Normalizes DOIs (strips URL prefixes and version suffixes), PubMed IDs, and titles (lowercase, punctuation removed)
+- Matches by exact DOI, exact PubMed ID, exact title, and fuzzy title similarity
+- Fuzzy matches are flagged as high confidence (≥ 95) or low confidence (88–94)
+
+**Limitations**
+1. The Retraction Watch database is comprehensive but not exhaustive — retractions missing from it will not be flagged regardless of match quality.
+2. Match failures are possible even for papers that are in RW: DOIs and PubMed IDs are often absent in older references, and titles can differ enough between a citation and the RW record to fall below the matching threshold. A clean result does not guarantee the absence of retracted papers.
 """
 )
 
