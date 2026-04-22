@@ -56,16 +56,16 @@ def normalize_doi(doi):
     if doi in {"", "nan", "none"}:
         return None
 
-    return (
+    doi = (
         doi
         .replace("https://doi.org/", "")
         .replace("http://doi.org/", "")
         .replace("http://dx.doi.org/", "")
-        #.replace(".pub2", "")
         .replace("doi:", "")
         .strip()
-        or None
     )
+    doi = re.sub(r"\.pub\d+$", "", doi)
+    return doi or None
 
 
 def normalize_title(title):
@@ -78,6 +78,13 @@ def normalize_title(title):
     title = re.sub(r"[^\w\s]", "", title)
 
     return title.strip()
+
+
+def normalize_pubmed_id(pmid):
+    if pmid is None or pd.isna(pmid):
+        return None
+    pmid = re.sub(r"\D", "", str(pmid).strip())
+    return pmid or None
 
 
 def filter_bad_titles(title_norm, min_len=10):
@@ -118,6 +125,21 @@ def match_by_doi(review_df, rw_df, key="doi_norm"):
     matched["match_type"] = "doi"
     return matched
 
+def match_by_pubmed_id(review_df, rw_df, key="pmid_norm"):
+    left = review_df.dropna(subset=[key]).copy()
+    right = rw_df.dropna(subset=[key]).copy()
+
+    matched = left.merge(
+        right,
+        on=key,
+        how="inner",
+        suffixes=("_ris", "_rw"),
+    )
+
+    matched["match_type"] = "pubmed_id"
+    return matched
+
+
 def match_by_title_exact(review_df, rw_df, key="title_norm"):
     left = review_df.dropna(subset=[key]).copy()
     right = rw_df.dropna(subset=[key]).copy()
@@ -137,7 +159,7 @@ def match_by_title_exact(review_df, rw_df, key="title_norm"):
 
 
 
-def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
+def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=88):
     rw_titles = rw_df[key].dropna().astype(str).unique().tolist()
 
     def best_match(title):
@@ -178,5 +200,8 @@ def match_by_title_fuzzy(review_df, rw_df, key="title_norm", threshold=90):
         suffixes=("_review", "_rw"),
     )
 
+    merged["fuzzy_confidence"] = merged["title_score"].apply(
+        lambda s: "high" if s >= 95 else "low"
+    )
     merged["match_type"] = "title_fuzzy"
     return merged
