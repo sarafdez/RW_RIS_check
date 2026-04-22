@@ -9,6 +9,7 @@ import requests
 
 
 RW_URL = "https://gitlab.com/crossref/retraction-watch-data/-/raw/main/retraction_watch.csv"
+_LOCAL_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "retraction_watch.csv")
 
 BAD_TITLES = {
     "editorial",
@@ -25,14 +26,22 @@ BAD_TITLES = {
 
 
 def load_retraction_watch():
-    rw_df = pd.read_csv(RW_URL)
-
-    metadata = {
-        "downloaded_on": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "n_records": len(rw_df),
-        "source": "Retraction Watch public GitHub CSV",
-        "url": RW_URL
-    }
+    if os.path.exists(_LOCAL_CSV):
+        rw_df = pd.read_csv(_LOCAL_CSV)
+        metadata = {
+            "downloaded_on": datetime.utcfromtimestamp(os.path.getmtime(_LOCAL_CSV)).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "n_records": len(rw_df),
+            "source": "Local file",
+            "url": _LOCAL_CSV,
+        }
+    else:
+        rw_df = pd.read_csv(RW_URL)
+        metadata = {
+            "downloaded_on": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "n_records": len(rw_df),
+            "source": "Retraction Watch public GitHub CSV",
+            "url": RW_URL,
+        }
 
     return rw_df, metadata
 

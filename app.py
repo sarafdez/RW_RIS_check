@@ -16,23 +16,20 @@ st.title("RIS ↔ Retraction Watch overlap")
 
 # ---- App info ----
 st.markdown(
+    "For more information on retracted papers, visit the "
+    "[Retraction Watch website](https://retractionwatch.com/)."
+)
+
+st.markdown(
     """
-
-This app matches references in a **RIS** file to the **Retraction Watch** database.
-
-The app downloads the Retraction Watch database at most once every 24h.
-
-
-How matching works:
-1. **Normalize DOIs** and **normalize titles** (lowercasing + stripping punctuation).
-2. **DOI exact match** (fast + most reliable).
-3. **Exact title match** (on normalized titles) and filter out bad/short titles.
-4. **Fuzzy title matching** using token-set similarity.
-
-
-
+**How to use**
+1. Upload a RIS file using the uploader below.
+2. The app matches your references against the Retraction Watch database — by DOI, exact title, and fuzzy title.
+3. Review matches in the **Results** tabs and manually verify flagged records.
+4. Download the matched records as CSV.
 """
 )
+
 
 # ---- Variables and functions ----
 FUZZY_THRESHOLD = 95
@@ -79,10 +76,27 @@ def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
 
 doi_col_config = {
     "OriginalPaperDOI": st.column_config.LinkColumn(
-        "OriginalPaperDOI",
+        "RW DOI",
         display_text=r"https?://doi\.org/(.*)",
-        help="Opens the DOI on doi.org",
-    )
+        help="DOI from Retraction Watch — opens on doi.org",
+    ),
+    "Title": st.column_config.TextColumn("RW Title"),
+    "primary_title": st.column_config.TextColumn("Your Title (RIS)"),
+    "Author": st.column_config.TextColumn("Author (RW)"),
+    "Journal": st.column_config.TextColumn("Journal"),
+    "RetractionDate": st.column_config.TextColumn("Retraction Date"),
+    "RetractionNature": st.column_config.TextColumn("Type"),
+    "Reason": st.column_config.TextColumn("Reason"),
+    "doi": st.column_config.TextColumn("Your DOI (RIS)"),
+}
+
+fuzzy_col_config = {
+    **doi_col_config,
+    "title_score": st.column_config.NumberColumn(
+        "Match Score (%)",
+        format="%.1f",
+        help="Token-sort similarity score (0–100). Threshold is 95.",
+    ),
 }
 
 
@@ -142,8 +156,14 @@ with st.spinner("Running title matching…"):
             rw_df[rw_df["title_ok"]],
             threshold=FUZZY_THRESHOLD,
         )
+        # exclude titles already caught by exact matching
+        if not fuzzy_matches.empty and not exact_matches.empty:
+            exact_title_norms = set(exact_matches["title_norm"].dropna())
+            fuzzy_matches = fuzzy_matches[
+                ~fuzzy_matches["matched_title_norm"].isin(exact_title_norms)
+            ]
     else:
-        fuzzy_matches = pd.DataFrame() 
+        fuzzy_matches = pd.DataFrame()
     
     elapsed = time.perf_counter() - start
     
@@ -152,14 +172,16 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
+rw_cols = ["Title", "primary_title", "Author", "Journal", "RetractionDate", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
 rw_doi = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
+rw_fuzzy_cols = rw_cols + ["title_score"]
+
 if run_fuzzy and not fuzzy_matches.empty:
-    rw_fuzzy = fuzzy_matches[rw_cols].copy()
+    rw_fuzzy = fuzzy_matches[rw_fuzzy_cols].copy()
 else:
-    rw_fuzzy = pd.DataFrame(columns=rw_cols)
+    rw_fuzzy = pd.DataFrame(columns=rw_fuzzy_cols)
     
 
 # ---- Summary ----
@@ -173,62 +195,69 @@ res3.metric("Fuzzy title matches (excluding very short titles)", int(len(rw_fuzz
 
 
 # ---- Show results ----
-tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches", "Raw RIS"])
-st.caption("Title-> RW, primary_title-> RIS, OriginalPaperDOI-> RW, doi-> RIS")
+st.caption(
+    "Column sources — RW database: RW Title, Author, Journal, Retraction Date, Type, Reason, RW DOI | "
+    "Your RIS file: Your Title (RIS), Your DOI (RIS) | "
+    "Fuzzy tab only: Match Score (%)"
+)
+tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches (unique)", "Raw RIS"])
 
-combined = (
-    pd.concat(
-        [
-            rw_doi.assign(match_type="doi"),
-            rw_exact.assign(match_type="title_exact"),
-            rw_fuzzy.assign(match_type="title_fuzzy"),
-        ],
-        ignore_index=True,
-    )
-    #.drop_duplicates(subset=["doi", "Title", "match_type"])
+combined = pd.concat(
+    [
+        rw_doi.assign(match_type="doi"),
+        rw_exact.assign(match_type="title_exact"),
+        rw_fuzzy.assign(match_type="title_fuzzy"),
+    ],
+    ignore_index=True,
 )
 
+combined_unique = combined.copy()
+for col in combined_unique.columns:
+    combined_unique[col] = combined_unique[col].map(
+        lambda x: repr(x) if isinstance(x, (list, dict, set, tuple)) else x
+    )
+combined_unique = combined_unique.drop_duplicates(subset=["OriginalPaperDOI", "Title"], keep="first")
+
 with tabs[0]:
+    st.caption(f"{len(rw_doi)} row(s)")
     if len(rw_doi) == 0:
-        st.write("No DOI matches found.")
+        st.info("No DOI matches found.")
     else:
         st.dataframe(_prep_for_display(rw_doi), use_container_width=True, column_config=doi_col_config)
 
 with tabs[1]:
+    st.caption(f"{len(rw_exact)} row(s)")
     if len(rw_exact) == 0:
-        st.write("No exact title matches found.")
+        st.info("No exact title matches found.")
     else:
         st.dataframe(_prep_for_display(rw_exact), use_container_width=True, column_config=doi_col_config)
 
 with tabs[2]:
     if not run_fuzzy:
         st.info("Fuzzy title matching is turned off. Enable it above to run.")
-    if len(rw_fuzzy) == 0:
-        st.write("No fuzzy title matches found.")
     else:
-        st.dataframe(_prep_for_display(rw_fuzzy), use_container_width=True, column_config=doi_col_config)
-        
-with tabs[3]:
-    if len(combined) == 0:
-        st.write("No matches found.")
-    else:
-        combined_unique = combined.copy()
-        for col in combined_unique.columns:
-            combined_unique[col] = combined_unique[col].map(
-            lambda x: repr(x) if isinstance(x, (list, dict, set, tuple)) else x
-        )
+        st.caption(f"{len(rw_fuzzy)} row(s)")
+        if len(rw_fuzzy) == 0:
+            st.info("No fuzzy title matches found.")
+        else:
+            st.dataframe(_prep_for_display(rw_fuzzy), use_container_width=True, column_config=fuzzy_col_config)
 
-        combined_unique = combined_unique.drop_duplicates()
+with tabs[3]:
+    st.caption(f"{len(combined_unique)} row(s) (deduplicated)")
+    if len(combined_unique) == 0:
+        st.info("No matches found.")
+    else:
         st.dataframe(_prep_for_display(combined_unique), use_container_width=True, column_config=doi_col_config)
 
 with tabs[4]:
+    st.caption(f"{len(review_df)} row(s)")
     st.dataframe(review_df, use_container_width=True)
 
 
 # ---- Download ----
 st.subheader("Download")
 
-csv_bytes = combined.to_csv(index=False).encode("utf-8")
+csv_bytes = combined_unique.to_csv(index=False).encode("utf-8")
 st.download_button(
     "Download matched Retraction Watch rows (CSV)",
     data=csv_bytes,
