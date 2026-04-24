@@ -24,18 +24,18 @@ st.markdown(
     """
 **How to use**
 1. Upload a RIS file using the uploader below.
-2. The app matches your references against the Retraction Watch database — by DOI, PubMed ID, exact title, and fuzzy title.
+2. The app matches your references against the Retraction Watch database — by DOI, exact title, and fuzzy title.
 3. Review matches in the **Results** tabs and manually verify flagged records.
 4. Download the matched records as CSV.
 
 **What it does**
-- Normalizes DOIs (strips URL prefixes and version suffixes), PubMed IDs, and titles (lowercase, punctuation removed)
-- Matches by exact DOI, exact PubMed ID, exact title, and fuzzy title similarity
+- Normalizes DOIs (strips URL prefixes and version suffixes) and titles (lowercase, punctuation removed)
+- Matches by exact DOI, exact title, and fuzzy title similarity
 - Fuzzy matches are flagged as high confidence (≥ 95) or low confidence (88–94)
 
 **Limitations**
 1. The Retraction Watch database is comprehensive but not exhaustive — retractions missing from it will not be flagged regardless of match quality.
-2. Match failures are possible even for papers that are in RW: DOIs and PubMed IDs are often absent in older references, and titles can differ enough between a citation and the RW record to fall below the matching threshold. A clean result does not guarantee the absence of retracted papers.
+2. Match failures are possible even for papers that are in RW: DOIs are often absent in older references, and titles can differ enough between a citation and the RW record to fall below the matching threshold. A clean result does not guarantee the absence of retracted papers.
 """
 )
 
@@ -52,12 +52,9 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
         df["doi"] = None
     if "primary_title" not in df.columns:
         df["primary_title"] = None
-    if "user_definable_1" not in df.columns:
-        df["user_definable_1"] = None
 
     df = df.copy()
     df["doi_norm"]  = df["doi"].apply(normalize_doi)
-    df["pmid_norm"] = df["user_definable_1"].apply(normalize_pubmed_id)
     df["title_norm"] = df["primary_title"].apply(normalize_title)
     df["title_ok"]  = df["title_norm"].apply(filter_bad_titles)
 
@@ -69,7 +66,7 @@ def get_retraction_watch():
     rw_df, meta = load_retraction_watch()
     rw_df = rw_df.copy()
     rw_df["doi_norm"]  = rw_df["OriginalPaperDOI"].apply(normalize_doi)
-    rw_df["pmid_norm"] = rw_df["OriginalPaperPubMedID"].apply(normalize_pubmed_id)
+
     rw_df["title_norm"] = rw_df["Title"].apply(normalize_title)
     return rw_df, meta
 
@@ -153,11 +150,10 @@ review_df = _read_ris(uploaded)
 
 
 # ---- Quality checks ----
-qc1, qc2, qc3, qc4 = st.columns(4)
+qc1, qc2, qc3 = st.columns(3)
 qc1.metric("RIS records", f"{len(review_df):,}")
 qc2.metric("Missing DOI", int(review_df["doi"].isna().sum()))
-qc3.metric("Missing PubMed ID", int(review_df["pmid_norm"].isna().sum()))
-qc4.metric("Missing title", int(review_df["title_norm"].isna().sum()))
+qc3.metric("Missing title", int(review_df["title_norm"].isna().sum()))
 
 
 # ---- Matching ----
@@ -166,7 +162,6 @@ with st.spinner("Running title matching…"):
     start = time.perf_counter()
     
     doi_matches    = match_by_doi(review_df, rw_df)
-    pubmed_matches = match_by_pubmed_id(review_df, rw_df)
     exact_matches  = match_by_title_exact(review_df[review_df["title_ok"]], rw_df[rw_df["title_ok"]])
     
     if run_fuzzy:
@@ -193,7 +188,6 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 rw_cols = ["Title", "primary_title", "Author", "Journal", "RetractionDate", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
 rw_doi   = doi_matches[rw_cols].copy()
-rw_pmid  = pubmed_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
 rw_fuzzy_cols = rw_cols + ["title_score", "fuzzy_confidence"]
@@ -208,11 +202,10 @@ else:
 st.subheader("Results")
 st.caption("Manually verify these results.")
 
-res1, res2, res3, res4 = st.columns(4)
+res1, res2, res3 = st.columns(3)
 res1.metric("DOI matches", int(len(rw_doi)))
-res2.metric("PubMed ID matches", int(len(rw_pmid)))
-res3.metric("Exact title matches", int(len(rw_exact)))
-res4.metric("Fuzzy title matches", int(len(rw_fuzzy)))
+res2.metric("Exact title matches", int(len(rw_exact)))
+res3.metric("Fuzzy title matches", int(len(rw_fuzzy)))
 
 
 # ---- Show results ----
@@ -221,12 +214,11 @@ st.caption(
     "Your RIS file: Your Title (RIS), Your DOI (RIS) | "
     "Fuzzy tab only: Match Score (%), Confidence"
 )
-tabs = st.tabs(["DOI matches", "PubMed ID matches", "Exact title matches", "Fuzzy title matches", "All matches (unique)", "Raw RIS"])
+tabs = st.tabs(["DOI matches", "Exact title matches", "Fuzzy title matches", "All matches (unique)", "Raw RIS"])
 
 combined = pd.concat(
     [
         rw_doi.assign(match_type="doi"),
-        rw_pmid.assign(match_type="pubmed_id"),
         rw_exact.assign(match_type="title_exact"),
         rw_fuzzy.assign(match_type="title_fuzzy"),
     ],
@@ -248,20 +240,13 @@ with tabs[0]:
         st.dataframe(_prep_for_display(rw_doi), use_container_width=True, column_config=doi_col_config)
 
 with tabs[1]:
-    st.caption(f"{len(rw_pmid)} row(s)")
-    if len(rw_pmid) == 0:
-        st.info("No PubMed ID matches found.")
-    else:
-        st.dataframe(_prep_for_display(rw_pmid), use_container_width=True, column_config=doi_col_config)
-
-with tabs[2]:
     st.caption(f"{len(rw_exact)} row(s)")
     if len(rw_exact) == 0:
         st.info("No exact title matches found.")
     else:
         st.dataframe(_prep_for_display(rw_exact), use_container_width=True, column_config=doi_col_config)
 
-with tabs[3]:
+with tabs[2]:
     if not run_fuzzy:
         st.info("Fuzzy title matching is turned off. Enable it above to run.")
     else:
@@ -271,14 +256,14 @@ with tabs[3]:
         else:
             st.dataframe(_prep_for_display(rw_fuzzy), use_container_width=True, column_config=fuzzy_col_config)
 
-with tabs[4]:
+with tabs[3]:
     st.caption(f"{len(combined_unique)} row(s) (deduplicated)")
     if len(combined_unique) == 0:
         st.info("No matches found.")
     else:
         st.dataframe(_prep_for_display(combined_unique), use_container_width=True, column_config=doi_col_config)
 
-with tabs[5]:
+with tabs[4]:
     st.caption(f"{len(review_df)} row(s)")
     st.dataframe(review_df, use_container_width=True)
 
