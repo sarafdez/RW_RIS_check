@@ -186,7 +186,7 @@ st.success(f"Matching completed in {elapsed:.2f} seconds")
 
 # ---- Filtering ----
 
-rw_cols = ["Title", "primary_title", "Author", "Journal", "RetractionDate", "RetractionNature", "Reason", "OriginalPaperDOI", "doi"]
+rw_cols = ["Title", "primary_title", "Author", "Journal", "RetractionDate", "RetractionNature", "Reason", "RetractionDOI", "OriginalPaperDOI", "doi"]
 rw_doi   = doi_matches[rw_cols].copy()
 rw_exact = exact_matches[rw_cols].copy()
 
