@@ -88,7 +88,7 @@ def normalize_pubmed_id(pmid):
 
 
 def filter_bad_titles(title_norm, min_len=10):
-    if not title_norm:
+    if not title_norm or not isinstance(title_norm, str):
         return False
     if title_norm in BAD_TITLES:
         return False
