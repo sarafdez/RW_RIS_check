@@ -82,6 +82,8 @@ def _prep_for_display(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "OriginalPaperDOI" in out.columns:
         out["OriginalPaperDOI"] = out["OriginalPaperDOI"].apply(_doi_url)
+    if "RetractionDOI" in out.columns:
+        out["RetractionDOI"] = out["RetractionDOI"].apply(_doi_url)
     return out
 
 doi_col_config = {
@@ -90,12 +92,17 @@ doi_col_config = {
         display_text=r"https?://doi\.org/(.*)",
         help="DOI from Retraction Watch — opens on doi.org",
     ),
+    "RetractionDOI": st.column_config.LinkColumn(
+        "Retraction Notice DOI",
+        display_text=r"https?://doi\.org/(.*)",
+        help="DOI of the retraction notice — opens on doi.org",
+    ),
     "Title": st.column_config.TextColumn("RW Title"),
     "primary_title": st.column_config.TextColumn("Your Title (RIS)"),
     "Author": st.column_config.TextColumn("Author (RW)"),
     "Journal": st.column_config.TextColumn("Journal"),
     "RetractionDate": st.column_config.TextColumn("Retraction Date"),
-    "RetractionNature": st.column_config.TextColumn("Type"),
+    "RetractionNature": st.column_config.TextColumn("Retraction Nature"),
     "Reason": st.column_config.TextColumn("Reason"),
     "doi": st.column_config.TextColumn("Your DOI (RIS)"),
 }
