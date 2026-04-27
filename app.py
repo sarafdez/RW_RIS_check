@@ -29,7 +29,7 @@ st.markdown(
 4. Download the matched records as CSV.
 
 **What it does**
-- Normalizes DOIs (strips URL prefixes and version suffixes) and titles (lowercase, punctuation removed)
+- Normalizes DOIs (strips URL prefixes) and titles (lowercase, punctuation removed)
 - Matches by exact DOI, exact title, and fuzzy title similarity
 - Fuzzy matches are flagged as high confidence (≥ 95) or low confidence (88–94)
 
