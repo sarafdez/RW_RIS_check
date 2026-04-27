@@ -64,7 +64,6 @@ def normalize_doi(doi):
         .replace("doi:", "")
         .strip()
     )
-    doi = re.sub(r"\.pub\d+$", "", doi)
     return doi or None
 
 
