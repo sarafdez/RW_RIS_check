@@ -52,9 +52,13 @@ def _read_ris(uploaded_file) -> pd.DataFrame:
         df["doi"] = None
     if "primary_title" not in df.columns:
         df["primary_title"] = None
+    if "title" not in df.columns:
+        df["title"] = None
 
     df = df.copy()
     df["doi_norm"]  = df["doi"].apply(normalize_doi)
+    # T1 → primary_title; TI → title. Use whichever is present.
+    df["primary_title"] = df["primary_title"].combine_first(df["title"])
     df["title_norm"] = df["primary_title"].apply(normalize_title)
     df["title_ok"]  = df["title_norm"].apply(filter_bad_titles)
 
