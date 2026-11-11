@@ -35,6 +35,14 @@ def works_by_doi(dois: list[str]) -> dict[str, dict]:
     return out
 
 
+def search_title(title: str, rows: int = 5) -> list[dict]:
+    """Title search (OpenAlex allows ~10 requests/second, so many titles can be searched in parallel)."""
+    clean = " ".join(title.replace(",", " ").replace(":", " ").replace("|", " ").split())[:300]
+    data = get(f"{API}/works", {**_base(), "filter": f"title.search:{clean}", "per-page": rows,
+                                "select": "id,doi,title,publication_year,ids,type"})
+    return (data or {}).get("results", [])
+
+
 def authorship_ids(work: dict) -> list[dict]:
     res = []
     for a in work.get("authorships", []) or []:

@@ -45,6 +45,7 @@ class Dossier:
     author_openalex: dict = field(default_factory=dict)     # author name -> [works]
     errors: list[str] = field(default_factory=list)
     sources_checked: list[str] = field(default_factory=list)
+    notice_info: dict = field(default_factory=dict)          # "doi:x" / "pmid:y" -> {"title", "citation"}
 
 
 @dataclass
@@ -115,11 +116,30 @@ def _accept_pubmed(study: Study, records: list[dict]) -> Optional[tuple[dict, st
     return None
 
 
-def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop):
+def _accept_openalex(study: Study, works: list[dict]) -> Optional[tuple[dict, str, float]]:
+    best, best_sim = None, 0.0
+    for w in works:
+        if not w.get("title") or (is_notice_title(w["title"]) and not is_notice_title(study.title)):
+            continue
+        y = w.get("publication_year")
+        year_ok = not study.year or not y or abs(int(y) - int(study.year)) <= 1
+        sim = _title_sim(study.title, w["title"])
+        if year_ok and sim > best_sim:
+            best, best_sim = w, sim
+    if best and best_sim >= 97:
+        return best, "high", best_sim
+    if best and best_sim >= 92:
+        return best, "medium", best_sim
+    return None
+
+
+def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop,
+             use_crossref: bool = False):
     """Fill in missing DOIs/PMIDs and metadata, cheapest source first.
 
     1. PubMed title search, batched (~10 titles per request; most included health studies are in PubMed).
-    2. Crossref citation matching for what is left (1 request/second on the public API).
+    2. OpenAlex title search, in parallel (~10 requests/second; covers nearly all Crossref DOIs).
+    3. Optional: Crossref citation matching for what is left (slow: 1 request/second on the public API).
     """
     pm_records: dict[str, dict] = {}
     todo = [s for s in studies if not s.identified]
@@ -143,8 +163,37 @@ def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progr
             for s in with_title:
                 dossiers[s.uid].errors.append(f"PubMed title search failed: {e}")
 
-    # 2. Crossref citation matching for the rest
+    # 2. OpenAlex title search, parallel
+    rest = [s for s in todo if not s.identified and s.title and len(normalize_title(s.title) or "") >= 20]
+    if rest:
+        def _oa(s: Study):
+            try:
+                return s, openalex.search_title(s.title), None
+            except SourceError as e:
+                return s, [], str(e)
+
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for i, (s, works, err) in enumerate(ex.map(_oa, rest)):
+                progress(i / len(rest), f"Searching OpenAlex for references not in PubMed ({i + 1}/{len(rest)})")
+                if err:
+                    dossiers[s.uid].errors.append(f"OpenAlex title search failed: {err}")
+                    continue
+                hit = _accept_openalex(s, works)
+                if hit:
+                    w, conf, sim = hit
+                    from .normalize import normalize_doi, normalize_pmid
+                    s.doi = normalize_doi(w.get("doi"))
+                    s.pmid = s.pmid or normalize_pmid(((w.get("ids") or {}).get("pmid") or "").rsplit("/", 1)[-1])
+                    if s.identified:
+                        s.id_method, s.id_confidence = "OpenAlex title match", conf
+                        s.id_notes.append(f"Found in OpenAlex by title (similarity {sim:.0f}%).")
+
+    # 3. Crossref citation matching for the rest (optional: slow on the public API)
     rest = [s for s in todo if not s.identified]
+    if not use_crossref:
+        for s in rest:
+            s.id_notes.append("Not found in PubMed or OpenAlex; checked against Retraction Watch by title only.")
+        rest = []
     t0 = time.monotonic()
     for i, s in enumerate(rest):
         eta = ""
@@ -380,6 +429,39 @@ def _merge_duplicates(studies: list[Study], dossiers: dict, info: RunInfo):
     studies[:] = keep
 
 
+def fetch_notice_titles(studies: list[Study], dossiers: dict, rw: RWIndex, progress: Progress = _noop):
+    """Titles and citations of the notices themselves (retraction notes, EoCs, errata), fetched in batches.
+    The full wording of a notice is only on the journal's website; databases keep its title and citation."""
+    refs = pubmed.RETRACTION_REFS | pubmed.CONCERN_REFS | pubmed.CORRECTION_REFS
+    pmids, dois = set(), set()
+    for s in studies:
+        d = dossiers[s.uid]
+        pmids |= {l["pmid"] for l in (d.pubmed or {}).get("links", []) if l["pmid"] and l["ref_type"] in refs}
+        dois |= {u["doi"] for u in (d.crossref or {}).get("updated_by", []) if u.get("doi")}
+        dois |= {rw.record(m.row)["notice_doi"] for m in d.rw if rw.record(m.row)["notice_doi"]}
+    if not pmids and not dois:
+        return
+    progress(0.0, f"Fetching titles of {len(pmids | dois)} notices")
+    info = {}
+    try:
+        for pmid, rec in pubmed.fetch(sorted(pmids)).items():
+            cit = " ".join(filter(None, [rec.get("journal"), str(rec.get("year") or "")]))
+            info[f"pmid:{pmid}"] = {"title": rec.get("title") or "", "citation": cit}
+            if rec.get("doi"):
+                info.setdefault(f"doi:{rec['doi']}", info[f"pmid:{pmid}"])
+    except Exception as e:
+        info["_error"] = str(e)
+    try:
+        for doi, it in crossref.works_by_doi(sorted(dois)).items():
+            issued = ((it.get("issued") or {}).get("date-parts") or [[None]])[0][0]
+            cit = " ".join(filter(None, [(it.get("container-title") or [""])[0], str(issued or "")]))
+            info.setdefault(f"doi:{doi}", {"title": (it.get("title") or [""])[0], "citation": cit})
+    except SourceError as e:
+        info["_error"] = str(e)
+    for s in studies:
+        dossiers[s.uid].notice_info = info
+
+
 def identify_from_rw(studies: list[Study], rw: RWIndex):
     """First pass, local and instant: a reference with no DOI/PMID whose exact title is in Retraction Watch
     (confirmed by first author or year) takes its identifiers from the Retraction Watch record."""
@@ -397,7 +479,8 @@ def identify_from_rw(studies: list[Study], rw: RWIndex):
                 break
 
 
-def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progress = _noop) -> tuple[dict, RunInfo]:
+def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progress = _noop,
+        use_crossref: bool = False) -> tuple[dict, RunInfo]:
     info = RunInfo(started=now_utc(), online=online)
     dossiers = {s.uid: Dossier() for s in studies}
     info.sources["Retraction Watch"] = (
@@ -406,7 +489,7 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
     )
     identify_from_rw(studies, rw)
     if online:
-        identify(studies, dossiers, progress)
+        identify(studies, dossiers, progress, use_crossref=use_crossref)
         _merge_duplicates(studies, dossiers, info)
         gather_online(studies, dossiers, progress)
         info.sources["Crossref"] = f"REST API (works, updated-by, citation matching), queried {now_utc()}"
@@ -417,6 +500,8 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
         for s in studies:
             s.design = detect_design(s.title, s.abstract, s.pub_types)
     match_rw(studies, dossiers, rw, progress)
+    if online:
+        fetch_notice_titles(studies, dossiers, rw, progress)
     info.errors = sorted({e for d in dossiers.values() for e in d.errors})
     info.finished = now_utc()
     return dossiers, info

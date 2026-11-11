@@ -157,6 +157,10 @@ def page_input():
         "Design (detected)": s.design, "Source": f"{s.source_file} ({s.source_format})",
         "Citation text": s.raw[:300],
     } for s in ss.parsed])
+    use_cr = st.checkbox(
+        "Also search Crossref for references not found in PubMed or OpenAlex (slow: about 2 seconds per reference)",
+        value=False, help="Crossref's free API allows one request per second. Usually only needed for references "
+                          "whose title could not be read, e.g. unusual citation formats.")
     st.caption("Untick records that are not included studies (e.g. notices or background references). You can fix a "
                "DOI, PMID or title directly in the table. Records without DOI/PMID will be looked up via Crossref.")
     edited = st.data_editor(
@@ -181,7 +185,7 @@ def page_input():
         def progress(p: float, msg: str):
             bar.progress(min(max(p, 0.0), 1.0), text=msg)
 
-        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress)
+        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress, use_crossref=use_cr)
         ss.assessment = build(studies, dossiers, info, rw, {"online": True})
         bar.progress(1.0, text="Done")
         goto(PAGES[1])
@@ -299,7 +303,7 @@ def page_overview():
         with st.expander(f"{len(noid)} reference(s) could not be identified"):
             st.markdown(
                 "For these references no DOI or PubMed ID was found: not in your file, not by an exact title match in "
-                "Retraction Watch, not by a PubMed title search and not by Crossref citation matching. They were still "
+                "Retraction Watch, not by a PubMed or OpenAlex title search (nor by Crossref, if you switched it on). They were still "
                 "checked against **Retraction Watch by title** (exact and similar titles), but not against the other "
                 "sources. Add the DOI on the Input page and run again for a full check.")
             st.dataframe(noid[["Study", "Title", "Journal", "Year", "Status", "Source file"]], hide_index=True,
@@ -311,7 +315,8 @@ def page_overview():
     steps_def = [("DOI/PMID in your file", "1 · DOI or PubMed ID already in your file"),
                  ("Retraction Watch title match", "2 · Exact title found in Retraction Watch"),
                  ("PubMed title match", "3 · Found by title in PubMed"),
-                 ("Crossref citation match", "4 · Found by citation in Crossref"),
+                 ("OpenAlex title match", "4 · Found by title in OpenAlex"),
+                 ("Crossref citation match", "5 · Found by citation in Crossref (optional)"),
                  ("Not identified (title only)", "Not identified (title only)")]
     counts = summ["Identification"].value_counts()
     steps = [(label, int(counts.get(key, 0))) for key, label in steps_def]
@@ -407,24 +412,28 @@ def page_flagged():
     if not fl:
         st.markdown("No retraction, expression of concern or correction was found in any source.")
 
+    ns = a.notices(uid)
+    st.markdown(f"#### Notices ({len(ns)})")
+    if ns:
+        st.caption("Each notice is shown once, even when several databases report it. The databases keep only the "
+                   "notice's title and citation: open the link to read the full notice on the journal's website.")
+        for n in ns:
+            _notice_card(n)
+    else:
+        st.caption("None found.")
+
     with st.container(border=True):
+        st.markdown("**Your decision**")
         d1, d2 = st.columns([2, 5])
         cur = a.decisions.get(uid, {})
         d1.radio("Your decision", DECISIONS, index=DECISIONS.index(cur.get("decision", DECISIONS[0])),
-                 key=f"dec|{uid}", on_change=_cb_decision, args=(uid,),
+                 key=f"dec|{uid}", on_change=_cb_decision, args=(uid,), label_visibility="collapsed",
                  help="'False match' removes the flags for this study (e.g. a different paper with a similar title).")
         d2.text_area("Note", value=cur.get("note", ""), key=f"note|{uid}", on_change=_cb_decision, args=(uid,),
-                     placeholder="e.g. Retracted 2018 for data fabrication; excluded from the analysis", height=110)
-
-    ns = a.notices(uid)
-    st.markdown("#### Notices")
-    if ns:
-        st.caption("The same notice reported by several sources is shown once, with all sources listed.")
-        st.dataframe(_notices_df(ns), hide_index=True, width="stretch",
-                     column_config={"Notice link": st.column_config.LinkColumn(display_text="open ↗"),
-                                    "Reasons (Retraction Watch)": st.column_config.TextColumn(width="large")})
-    else:
-        st.caption("None found.")
+                     placeholder="e.g. Retracted 2018 for data fabrication; excluded from the analysis", height=100,
+                     label_visibility="collapsed")
+        st.caption("Saved automatically when you click outside the box. Your decision and note are included in the "
+                   "Excel export (Summary and Notices sheets).")
 
     r13, r22 = a.results[uid].get("1.3"), a.results[uid].get("2.2")
     with st.expander(f"Authors' other retractions — {r13.proposed.value if r13 else 'n/a'}"):
@@ -451,6 +460,45 @@ def page_flagged():
         st.write({"DOI": s.doi, "PMID": s.pmid, "Trial registrations": s.trial_ids,
                   "Publication types (PubMed)": s.pub_types, "Source": f"{s.source_file} ({s.source_format})",
                   "Notes": s.id_notes, "Citation as supplied": s.raw[:500]})
+
+
+MAIN_SOURCES = ["Retraction Watch", "Crossref", "PubMed", "OpenAlex"]
+
+
+def _notice_card(n):
+    _, color, ic, _ = STATUS_INFO[{"Retraction": "Retracted", "Expression of concern": "Expression of concern",
+                                       "Correction": "Correction"}.get(n.type, "Correction")]
+    with st.container(border=True):
+        head = badge(f"{ic} {n.type}", color) + (f" &nbsp;**{n.date[:10]}**" if n.date else " &nbsp;date unknown")
+        if n.possible:
+            head += " &nbsp;" + badge("? possible match – verify it is the same paper", "#898781")
+        st.markdown(head, unsafe_allow_html=True)
+        if n.title:
+            st.markdown(f"**Notice:** {n.title}")
+        found = []
+        for src in MAIN_SOURCES:
+            if src == "OpenAlex" and n.type != "Retraction":
+                continue  # OpenAlex only records whether a paper is retracted
+            if src == "Crossref":
+                hit = "Crossref" in n.sources
+                only_copy = not hit and "Crossref (from RW)" in n.sources
+                found.append("✓ Crossref (copy of Retraction Watch)" if only_copy else f"{'✓' if hit else '✗'} Crossref")
+            else:
+                found.append(f"{'✓' if src in n.sources else '✗'} {src}")
+        st.markdown("**Found in:** " + " · ".join(found))
+        if n.reasons:
+            st.markdown("**Reasons (Retraction Watch):** " + "; ".join(n.reasons))
+        if n.note:
+            st.markdown(f"**Retraction Watch note:** {n.note}")
+        links = []
+        doi_links = [l for l in n.links if "doi.org" in l]
+        pm_links = [l for l in n.links if "pubmed" in l]
+        if doi_links:
+            links.append(f"[Read the notice ↗]({doi_links[0]})")
+        if pm_links:
+            links.append(f"[Notice in PubMed ↗]({pm_links[0]})")
+        if links:
+            st.markdown(" · ".join(links))
 
 
 def _evidence_df(r) -> pd.DataFrame:
@@ -535,9 +583,8 @@ def page_notices():
         with st.container(border=True):
             st.markdown(f"**{s.label}** · {s.title}")
             st.markdown(_links(s))
-            st.dataframe(_notices_df(a.notices(uid)), hide_index=True, width="stretch",
-                         column_config={"Notice link": st.column_config.LinkColumn(display_text="open ↗"),
-                                        "Reasons (Retraction Watch)": st.column_config.TextColumn(width="large")})
+            for nn in a.notices(uid):
+                _notice_card(nn)
             st.button("Open full study page →", on_click=open_study, args=(uid,))
 
 

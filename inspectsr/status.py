@@ -47,10 +47,17 @@ class Notice:
     links: list[str] = field(default_factory=list)
     note: str = ""
     possible: bool = False
+    title: str = ""            # title and citation of the notice itself (e.g. "Statement of Retraction: ...")
+    title_rank: int = 9        # which source the title came from (lower = more trusted)
+    date_from_rw: bool = False
 
     @property
     def sources_label(self) -> str:
         return ", ".join(self.sources)
+
+    @property
+    def in_retraction_watch(self) -> bool:
+        return "Retraction Watch" in self.sources
 
 
 def event_type(kind: str) -> Optional[str]:
@@ -109,6 +116,14 @@ def _add(n: Notice, e):
         n.sources.append(src)
     if e.url and e.url not in n.links:
         n.links.append(e.url)
+    # Prefer Retraction Watch, then PubMed, then Crossref. "RETRACTED: ..." is an article title, not a notice title
+    # (publisher records sometimes link the wrong article).
+    rank = {"Retraction Watch": 0, "PubMed": 1}.get(e.source, 2)
+    if e.text and not e.text.lstrip().upper().startswith("RETRACTED") and rank < n.title_rank:
+        n.title, n.title_rank = e.text, rank
+    # Retraction Watch's curated date wins over registration dates from other sources.
+    if e.source == "Retraction Watch" and e.date and len(e.date) >= 10 and not n.date_from_rw:
+        n.date, n.date_from_rw = e.date, True
     if e.source == "Retraction Watch":
         reasons, _, note = e.detail.partition(" | Note: ")
         for x in reasons.split("; "):

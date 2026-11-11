@@ -42,6 +42,7 @@ class Evidence:
     date: Optional[str] = None     # ISO date of the notice / event
     url: Optional[str] = None
     match: str = ""                # how the record was linked to the study (doi, pmid, title_fuzzy:96, author...)
+    text: str = ""                 # title / citation of the notice itself, when available
 
     def to_dict(self) -> dict:
         return asdict(self)

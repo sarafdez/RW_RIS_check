@@ -262,6 +262,17 @@ def test_notices_are_merged_across_sources():
     assert len(ns) == 1
     assert ns[0].sources == ["Crossref", "Retraction Watch", "Crossref (from RW)", "PubMed"]
     assert ns[0].reasons == ["Paper Mill", "Investigation by Journal/Publisher"]
+    assert ns[0].date == "2021-05-01"  # Retraction Watch date wins over the publisher's 2021-04-20
+
+
+def test_notice_title_prefers_rw_and_skips_article_titles():
+    from inspectsr.models import CheckResult, Evidence
+    ev = [Evidence("Crossref", "Retraction", "Asserted by: publisher", "2020-05-22", "u1", "doi",
+                   text="RETRACTED: A different article (The Lancet 2020)"),
+          Evidence("PubMed", "Retraction in", "Lancet 2020", "2020", "u2", "pmid", text="Retraction—Study title (Lancet)"),
+          Evidence("Retraction Watch", "Retraction", "Unreliable Data", "2020-06-05", "u3", "doi")]
+    ns = notices({"1.1": CheckResult("1.1", Answer.YES, "", ev, data={"kind": "retraction"})})
+    assert len(ns) == 1 and ns[0].title == "Retraction—Study title (Lancet)" and ns[0].date == "2020-06-05"
 
 
 def test_correction_and_possible_match_are_concerns_not_retractions():

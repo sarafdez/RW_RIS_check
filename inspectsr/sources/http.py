@@ -31,7 +31,7 @@ _MIN_INTERVAL = {
     "eutils.ncbi.nlm.nih.gov": 0.11 if os.environ.get("NCBI_API_KEY") else 0.36,
     # Crossref public pool (2025+): 1 request/second, 1 concurrent. Polite pool (mailto set) allows more.
     "api.crossref.org": 0.12 if os.environ.get("CROSSREF_MAILTO") else 1.05,
-    "api.openalex.org": 0.1,
+    "api.openalex.org": 0.11,
     "clinicaltrials.gov": 0.1,
 }
 

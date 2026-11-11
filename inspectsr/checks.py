@@ -20,12 +20,19 @@ from .sources.retraction_watch import HONEST_ERROR_TERMS, RWIndex, integrity_rel
 DOI = "https://doi.org/{}"
 
 
-def _rw_evidence(rec: dict, match) -> Evidence:
+def _ntext(d: Dossier, doi: str | None = None, pmid: str | None = None) -> str:
+    n = (d.notice_info.get(f"pmid:{pmid}") if pmid else None) or (d.notice_info.get(f"doi:{doi}") if doi else None)
+    if not n or not n.get("title"):
+        return ""
+    return n["title"] + (f" ({n['citation']})" if n.get("citation") else "")
+
+
+def _rw_evidence(rec: dict, match, d: Dossier | None = None) -> Evidence:
     reasons = "; ".join(rec["reasons"][:6])
     url = DOI.format(rec["notice_doi"]) if rec["notice_doi"] else (rec["urls"][0] if rec["urls"] else None)
     how = match.method + (f" ({match.score:.0f}%)" if match.method == "title_fuzzy" else "")
-    return Evidence("Retraction Watch", rec["nature"], f"{reasons}" + (f" | Note: {rec['notes'][:200]}" if rec["notes"] else ""),
-                    rec["notice_date"], url, how)
+    return Evidence("Retraction Watch", rec["nature"], f"{reasons}" + (f" | Note: {rec['notes'][:400]}" if rec["notes"] else ""),
+                    rec["notice_date"], url, how, text=_ntext(d, doi=rec["notice_doi"]) if d else "")
 
 
 def _not_identified_note(s: Study) -> str:
@@ -43,16 +50,16 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     for m in d.rw:
         rec = rw.record(m.row)
         if rec["nature"] == "Retraction":
-            (ev if m.strength in ("definite", "probable") else possible).append(_rw_evidence(rec, m))
+            (ev if m.strength in ("definite", "probable") else possible).append(_rw_evidence(rec, m, d))
             if any("retract and replace" in r.lower() for r in rec["reasons"]):
                 replace = True
         elif rec["nature"] == "Reinstatement":
             reinstated = True
-            ev.append(_rw_evidence(rec, m))
+            ev.append(_rw_evidence(rec, m, d))
     for u in (d.crossref or {}).get("updated_by", []):
         if u["type"] in crossref.RETRACTION_TYPES:
             ev.append(Evidence("Crossref", u["label"], f"Asserted by: {u['asserted_by']}", u["date"],
-                               DOI.format(u["doi"]) if u["doi"] else None, "doi"))
+                               DOI.format(u["doi"]) if u["doi"] else None, "doi", text=_ntext(d, doi=u["doi"])))
     pm = d.pubmed or {}
     if "Retracted Publication" in pm.get("pub_types", []):
         ev.append(Evidence("PubMed", "Retracted Publication", "PubMed publication type", None,
@@ -63,7 +70,8 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                 replace = True
             ev.append(Evidence("PubMed", pubmed.ref_type_label(link["ref_type"]), link["source"],
                                str(link["year"]) if link["year"] else None,
-                               pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid"))
+                               pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid",
+                               text=_ntext(d, pmid=link["pmid"])))
     oa = d.openalex or {}
     if oa.get("is_retracted"):
         ev.append(Evidence("OpenAlex", "Retracted (is_retracted)", "", None, oa.get("id"), "doi"))
@@ -108,11 +116,11 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         rec = rw.record(m.row)
         if rec["nature"] in ("Expression of concern", "Correction"):
             target = eoc if rec["nature"] == "Expression of concern" else other
-            (target if m.strength in ("definite", "probable") else possible).append(_rw_evidence(rec, m))
+            (target if m.strength in ("definite", "probable") else possible).append(_rw_evidence(rec, m, d))
             lifted |= any("eoc lifted" in r.lower() for r in rec["reasons"])
     for u in (d.crossref or {}).get("updated_by", []):
         e = Evidence("Crossref", u["label"], f"Asserted by: {u['asserted_by']}", u["date"],
-                     DOI.format(u["doi"]) if u["doi"] else None, "doi")
+                     DOI.format(u["doi"]) if u["doi"] else None, "doi", text=_ntext(d, doi=u["doi"]))
         if u["type"] in crossref.CONCERN_TYPES:
             eoc.append(e)
         elif u["type"] in crossref.CORRECTION_TYPES:
@@ -120,7 +128,8 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     for link in (d.pubmed or {}).get("links", []):
         e = Evidence("PubMed", pubmed.ref_type_label(link["ref_type"]), link["source"],
                      str(link["year"]) if link["year"] else None,
-                     pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid")
+                     pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid",
+                     text=_ntext(d, pmid=link["pmid"]))
         if link["ref_type"] in pubmed.CONCERN_REFS:
             eoc.append(e)
         elif link["ref_type"] in pubmed.CORRECTION_REFS:

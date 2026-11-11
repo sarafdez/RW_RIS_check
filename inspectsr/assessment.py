@@ -66,12 +66,16 @@ class Assessment:
         rows = []
         for s in self.studies:
             for n in self.notices(s.uid):
+                dec = self.decisions.get(s.uid) or {}
                 rows.append({"ID": s.uid, "Study": s.label, "Notice": n.type, "Date": n.date,
-                             "Possible match only": n.possible, "Reported by": n.sources_label,
-                             "Reasons (Retraction Watch)": "; ".join(n.reasons), "Note": n.note,
-                             "Links": " ".join(n.links)})
-        return pd.DataFrame(rows, columns=["ID", "Study", "Notice", "Date", "Possible match only", "Reported by",
-                                           "Reasons (Retraction Watch)", "Note", "Links"])
+                             "Notice title": n.title, "In Retraction Watch": "Yes" if n.in_retraction_watch else "No",
+                             "Reported by": n.sources_label, "Possible match only": n.possible,
+                             "Reasons (Retraction Watch)": "; ".join(n.reasons), "Retraction Watch note": n.note,
+                             "Links": " ".join(n.links), "Reviewer decision": self.decision(s.uid),
+                             "Reviewer note": dec.get("note", "")})
+        return pd.DataFrame(rows, columns=["ID", "Study", "Notice", "Date", "Notice title", "In Retraction Watch",
+                                           "Reported by", "Possible match only", "Reasons (Retraction Watch)",
+                                           "Retraction Watch note", "Links", "Reviewer decision", "Reviewer note"])
 
     def checks_table(self) -> pd.DataFrame:
         rows = []
