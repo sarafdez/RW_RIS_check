@@ -76,15 +76,14 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         n_src = len({e.source for e in ev})
         if replace:
             return CheckResult("1.1", Answer.YES,
-                               f"Retraction found ({n_src} source(s)), but it is a retract-and-replace. INSPECT-SR "
-                               "guidance allows the replacement version to be assessed instead.", ev, True)
+                               f"Retraction found ({n_src} source(s)), but it is a retract-and-replace: the "
+                               "replacement version can be assessed instead.", ev, True)
         if reinstated:
             return CheckResult("1.1", Answer.YES, "Retraction found, but Retraction Watch also lists a reinstatement. "
                                "Read the notices.", ev, True)
         return CheckResult("1.1", Answer.YES,
                            f"Retraction found in {n_src} source(s): {', '.join(sorted({e.source for e in ev}))}. "
-                           "INSPECT-SR: a retraction would typically warrant 'serious concerns' for the domain and "
-                           "the study, whatever the reason.", ev, needs_review=False, suggests_serious=True)
+                           "A retraction would typically warrant 'serious concerns' for the study, whatever the reason.", ev, needs_review=False, suggests_serious=True)
     if possible:
         return CheckResult("1.1", Answer.UNCLEAR, "Possible retraction: a similar title is in Retraction Watch but the "
                            "match could not be confirmed by DOI/PMID, author or year. Verify manually." +

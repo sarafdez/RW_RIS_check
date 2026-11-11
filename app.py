@@ -1,4 +1,4 @@
-"""INSPECT-SR assistant: Streamlit front end.
+"""Retraction Watch check: Streamlit front end.
 
 Run with:  streamlit run app.py
 """
@@ -12,18 +12,18 @@ import streamlit as st
 
 from inspectsr import __version__, charts, inputs, pipeline
 from inspectsr.assessment import Assessment, build
-from inspectsr.framework import CHECKS, CHECKS_BY_ID, CITATION, CITATION_URL, DOMAINS, DOMAIN_SHORT, SITE_URL, checks_in_domain
+from inspectsr import explore
+from inspectsr.framework import CHECKS_BY_ID, DOMAINS, DOMAIN_SHORT, checks_in_domain
 from inspectsr.judgement import overall_label, suggest_overall
 from inspectsr.models import Answer, Judgement, Study
 from inspectsr.sources import retraction_watch as rwmod
 from inspectsr.sources.registries import registry_url
 
-st.set_page_config(page_title="INSPECT-SR assistant", page_icon="🔎", layout="wide")
+st.set_page_config(page_title="Retraction Watch check", page_icon="🔎", layout="wide")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EXAMPLES = os.path.join(HERE, "examples")
 PAGES = ["1 · Input", "2 · Overview", "3 · Study assessments", "4 · Notices & evidence", "5 · Export & methods",
-         "About INSPECT-SR"]
+         "Explore Retraction Watch"]
 ANSWER_OPTIONS = ["(use proposed)", Answer.YES.value, Answer.NO.value, Answer.UNCLEAR.value, Answer.NA.value]
 JUDGEMENT_OPTIONS = ["(use suggested)", Judgement.NO_CONCERNS.value, Judgement.SOME_CONCERNS.value,
                      Judgement.SERIOUS_CONCERNS.value]
@@ -91,8 +91,8 @@ ss.setdefault("assessment", None)  # Assessment
 # ---- sidebar -----------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### 🔎 INSPECT-SR assistant")
-    st.caption(f"v{__version__} · automated support for the [INSPECT-SR]({SITE_URL}) trustworthiness tool")
+    st.markdown("### 🔎 Retraction Watch check")
+    st.caption(f"v{__version__} · checks included studies for retractions and other post-publication notices")
     page = st.radio("Go to", PAGES, key="page", label_visibility="collapsed")
     st.divider()
     rw = rw_index()
@@ -108,7 +108,7 @@ with st.sidebar:
     if a:
         st.divider()
         st.markdown(f"**Current assessment:** {len(a.studies)} studies")
-        st.caption(f"Run {a.run.finished} · {'online sources' if a.run.online else 'offline (RW only)'}")
+        st.caption(f"Run {a.run.finished}")
 
 
 def goto(p: str):
@@ -120,49 +120,22 @@ def goto(p: str):
 # =====================================================================================
 
 def page_input():
-    st.title("Check included studies with INSPECT-SR")
+    st.title("Check your included studies")
     st.markdown(
-        "Upload the **studies included in your review** in any common format. The assistant identifies each study, "
-        "searches several sources and proposes answers to the INSPECT-SR checks that can be automated. "
-        "You stay the assessor: every proposal comes with its evidence and can be overridden."
+        "Upload the **studies included in your review** in any common format. Each study is identified and checked "
+        "against the Retraction Watch database, Crossref, PubMed, OpenAlex and ClinicalTrials.gov. Every finding comes "
+        "with its evidence, and you can override every proposed answer."
     )
-    c1, c2 = st.columns([3, 2])
-    with c1:
-        files = st.file_uploader(
-            "Reference files",
-            type=["ris", "txt", "nbib", "bib", "xml", "csv", "tsv", "xlsx", "xls", "docx", "pdf"],
-            accept_multiple_files=True,
-            help="RIS (EndNote, Zotero, Covidence…), PubMed/MEDLINE (.nbib), BibTeX, EndNote XML, CSV/Excel, "
-                 "Word or PDF reference lists, or plain text.",
-        )
-        pasted = st.text_area("…or paste references (one per line, numbered list, or a list of DOIs/PMIDs)", height=140,
-                              placeholder="1. Horby P, Lim WS, et al. Dexamethasone in Hospitalized Patients with "
-                                          "Covid-19. N Engl J Med. 2021;384:693-704.\n10.1056/NEJMoa1602489\nPMID: 30879366")
-    with c2:
-        st.markdown("**Settings**")
-        online = st.toggle("Use online sources (Crossref, PubMed, OpenAlex, ClinicalTrials.gov)", value=True,
-                           help="Off: only the downloaded Retraction Watch database is used, and no data leaves "
-                                "this computer. On: only identifiers and titles of published articles are sent.")
-        use_search_date = st.checkbox("Record the review's search date", value=False)
-        search_date = st.date_input("Search date", value=date.today(), disabled=not use_search_date)
-        st.markdown("**Examples**")
-        if st.button("Load demo studies"):
-            ss.reports = []
-            demo = []
-            for f in ("demo_included_studies.ris", "demo_reference_list.txt"):
-                with open(os.path.join(EXAMPLES, f), "rb") as fh:
-                    stds, rep = inputs.parse_upload(f, fh.read())
-                demo += stds
-                ss.reports.append(rep)
-            _set_parsed(demo)
-        resume = st.file_uploader("Resume a saved assessment (.json)", type=["json"], key="resume")
-        if resume is not None and st.button("Open saved assessment"):
-            try:
-                ss.assessment = Assessment.from_json(resume.getvalue().decode("utf-8"))
-                goto(PAGES[1])
-                st.rerun()
-            except Exception as e:
-                st.error(f"Could not open this file: {e}")
+    files = st.file_uploader(
+        "Reference files",
+        type=["ris", "txt", "nbib", "bib", "xml", "csv", "tsv", "xlsx", "xls", "docx", "pdf"],
+        accept_multiple_files=True,
+        help="RIS (EndNote, Zotero, Covidence…), PubMed/MEDLINE (.nbib), BibTeX, EndNote XML, CSV/Excel, "
+             "Word or PDF reference lists, or plain text.",
+    )
+    pasted = st.text_area("…or paste references (one per line, numbered list, or a list of DOIs/PMIDs)", height=140,
+                          placeholder="1. Horby P, Lim WS, et al. Dexamethasone in Hospitalized Patients with "
+                                      "Covid-19. N Engl J Med. 2021;384:693-704.\n10.1056/NEJMoa1602489\nPMID: 30879366")
 
     if st.button("Read references", type="primary", disabled=not (files or pasted.strip())):
         ss.reports = []
@@ -178,7 +151,7 @@ def page_input():
         _set_parsed(allst)
 
     if not ss.parsed:
-        st.info("Add references above to begin. Try **Load demo studies** to see how it works.")
+        st.info("Add references above to begin.")
         return
 
     st.subheader("Review the parsed references")
@@ -211,18 +184,15 @@ def page_input():
     m3.metric("With DOI or PMID", n_id)
     m4.metric("Need identification", n_inc - n_id)
 
-    if st.button(f"Run INSPECT-SR checks on {n_inc} studies", type="primary", disabled=n_inc == 0):
+    if st.button(f"Run checks on {n_inc} studies", type="primary", disabled=n_inc == 0):
         studies = _apply_edits(ss.parsed, edited)
         bar = st.progress(0.0, text="Starting…")
 
         def progress(p: float, msg: str):
             bar.progress(min(max(p, 0.0), 1.0), text=msg)
 
-        dossiers, info = pipeline.run(studies, rw, online=online, progress=progress)
-        settings = {"online": online}
-        if use_search_date:
-            settings["search_date"] = search_date.isoformat()
-        ss.assessment = build(studies, dossiers, info, rw, settings)
+        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress)
+        ss.assessment = build(studies, dossiers, info, rw, {"online": True})
         bar.progress(1.0, text="Done")
         goto(PAGES[1])
         st.rerun()
@@ -288,20 +258,9 @@ def page_overview():
                 help="Automated proposals flagged for the reviewer (unclear evidence, notices to read, name matches).")
     k[4].metric("Identified (DOI/PMID)", f"{sum(s.identified for s in a.studies)}/{len(a.studies)}")
 
-    # post-search alerts
-    sd = a.settings.get("search_date")
-    if sd:
-        ev = a.evidence_table()
-        late = ev[(ev["Check"].isin(["1.1", "1.2"])) & (ev["Date"].fillna("") > str(sd))]
-        if not late.empty:
-            st.warning(f"**{late['ID'].nunique()} study(ies) received a notice after your search date ({sd}).** "
-                       "INSPECT-SR recommends repeating checks 1.1 and 1.2 shortly before finishing the review: "
-                       + ", ".join(sorted(set(late["Study"]))))
-
     st.markdown("#### Judgements by study")
-    st.caption("Suggested judgements follow the INSPECT-SR guidance. They are a starting point: confirm or override "
-               "them on the **Study assessments** page. Domains 3–4 need the full text and stay *Not assessed* "
-               "until you answer them.")
+    st.caption("Suggested judgements are a starting point: confirm or override them on the **Study assessments** "
+               "page. Domains 3–4 need the full text and stay *Not assessed* until you answer them.")
     st.altair_chart(charts.traffic_light(summ), width="content")
     c1, c2 = st.columns(2, gap="large")
     with c1:
@@ -401,7 +360,7 @@ def page_studies():
                   "Publication types (PubMed)": s.pub_types, "Source": f"{s.source_file} ({s.source_format})",
                   "Notes": s.id_notes, "Citation as supplied": s.raw[:500]})
         if s.design not in ("RCT", "Unknown", "Other trial"):
-            st.warning(f"INSPECT-SR was developed for randomised controlled trials; this record looks like: {s.design}.")
+            st.warning(f"The checks are designed for randomised controlled trials; this record looks like: {s.design}.")
 
     # ---- judgement strip
     doms = a.domains(uid)
@@ -454,7 +413,7 @@ def page_studies():
                              on_change=_cb_domain, args=(uid, dom))
             with jc2:
                 st.text_input("Reason for domain judgement", value=cur.get("reason", ""), key=f"dr|{uid}|{dom}",
-                              placeholder="INSPECT-SR asks reviewers to report reasons for judgements",
+                              placeholder="Report the reason for this judgement",
                               on_change=_cb_domain, args=(uid, dom))
 
     st.markdown("#### Overall study judgement")
@@ -537,7 +496,7 @@ def page_notices():
         return
     st.title("Notices & evidence")
     ev = a.evidence_table()
-    sd = a.settings.get("search_date")
+    sd = None
 
     notices = ev[ev["Check"].isin(["1.1", "1.2"])].copy()
     notices["Event"] = notices["Type"].map(_event)
@@ -551,9 +510,8 @@ def page_notices():
     tl["Study"] = tl["ID"] + " " + tl["Study"]
 
     st.markdown("#### Timeline of post-publication notices")
-    st.caption("When each flagged study was published and when notices appeared. Notices after your search date "
-               "mean the review may have included the study in good faith, which is why INSPECT-SR asks you to "
-               "repeat checks 1.1 and 1.2 before finishing the review.")
+    st.caption("When each flagged study was published and when notices appeared. Notices can appear years after "
+               "publication, so repeat the check shortly before finishing the review.")
     ch = charts.notice_timeline(tl, sd)
     if ch is not None:
         st.altair_chart(ch, width="stretch")
@@ -630,15 +588,13 @@ def page_export():
     st.title("Export & methods")
     st.markdown("Everything needed to document the assessment: judgements, every check with its proposed and final "
                 "answer, the evidence behind it, and which database versions were searched.")
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     stamp = date.today().isoformat()
-    c1.download_button("⬇ Excel workbook (all tables)", a.to_excel(), f"inspect-sr_{stamp}.xlsx",
+    c1.download_button("⬇ Excel workbook (all tables)", a.to_excel(), f"retraction-check_{stamp}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary",
                        width="stretch")
     c2.download_button("⬇ Summary (CSV)", a.summary_table().drop(columns=["Overall (raw)"]).to_csv(index=False),
-                       f"inspect-sr_summary_{stamp}.csv", mime="text/csv", width="stretch")
-    c3.download_button("⬇ Save assessment to resume later (.json)", a.to_json(), f"inspect-sr_assessment_{stamp}.json",
-                       mime="application/json", width="stretch")
+                       f"retraction-check_summary_{stamp}.csv", mime="text/csv", width="stretch")
 
     st.markdown("#### Draft methods text")
     st.code(a.methods_text(), language=None, wrap_lines=True)
@@ -650,53 +606,11 @@ def page_export():
 
 
 # =====================================================================================
-# ABOUT
+# EXPLORE RETRACTION WATCH
 # =====================================================================================
 
-def page_about():
-    st.title("About INSPECT-SR and this assistant")
-    st.markdown(
-        f"""
-**INSPECT-SR** (*INveStigating ProblEmatic Clinical Trials in Systematic Reviews*) assesses the trustworthiness of
-randomised controlled trials included in systematic reviews. It has **21 checks in 4 domains**. Each check is
-answered *Yes / No / Unclear / Not applicable* ("Yes" = a potentially problematic feature). Each domain and the
-study overall are judged as *no concerns*, *some concerns* or *serious concerns*.
-INSPECT-SR is applied **before** risk-of-bias assessment.
-
-Cite: {CITATION}. [{CITATION_URL}]({CITATION_URL}) · Guidance: [{SITE_URL}]({SITE_URL})
-"""
-    )
-    rows = []
-    for c in CHECKS:
-        rows.append({"Domain": f"D{c.domain} {DOMAINS[c.domain]}", "Check": c.id, "Question": c.question,
-                     "In this assistant": {"auto": "Automated proposal", "assisted": "Automated search, reviewer judges",
-                                           "manual": "Reviewer (full text)"}[c.automation],
-                     "Guidance": c.guidance_url})
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
-                 column_config={"Guidance": st.column_config.LinkColumn(display_text="open ↗"),
-                                "Question": st.column_config.TextColumn(width="large")})
-    st.markdown(
-        """
-#### What the automated checks do
-| Check | Sources | Proposed answer |
-|---|---|---|
-| **1.1 Retraction** | Retraction Watch (by DOI, PMID, exact and fuzzy title), Crossref update notices, PubMed publication types and linked notices, OpenAlex | *Yes* if any source reports a retraction, which suggests **serious concerns** (as the guidance says). Retract-and-replace is flagged separately. Fuzzy-only matches → *Unclear*. |
-| **1.2 Expression of concern / notices** | Same sources, plus PubMed-linked comments | EoC → *Yes*. Corrections/errata → *Unclear* (read the notice). Comments are listed but don't trigger concerns. |
-| **1.3 Research team** | Retraction Watch author names (as written and with first/family names swapped), OpenAlex author IDs | Integrity-related retractions by full-name or disambiguated match → *Yes (verify identity)*; initials-only or honest-error matches → *Unclear*. |
-| **2.2 Registration** | Registration IDs from the record, abstract and PubMed; ClinicalTrials.gov dates | ≤30 days after start → *No*; 31–180 days → *Unclear*; >180 days or after publication → *Yes*. No ID → *Unclear* (check full text). |
-
-#### Limits
-* No database is complete. A clean result is **not** proof that a study has no notices. Check the journal website as well (INSPECT-SR guidance).
-* Name-based matching of authors finds namesakes. Treat check 1.3 hits as leads to verify.
-* ClinicalTrials.gov start dates can change after registration. Use the record history.
-* Domains 3 and 4 need the full text (and sometimes data). The assistant records your answers but does not automate them.
-* Suggested judgements are not an algorithm endorsed by INSPECT-SR. The tool deliberately leaves judgement to reviewers.
-
-#### Privacy
-Only article identifiers and titles of published papers are sent to public APIs (Crossref, NCBI, OpenAlex,
-ClinicalTrials.gov). Turn off online sources to use only the downloaded Retraction Watch file.
-"""
-    )
+def page_explore():
+    explore.render(rw)
 
 
 {
@@ -705,5 +619,5 @@ ClinicalTrials.gov). Turn off online sources to use only the downloaded Retracti
     PAGES[2]: page_studies,
     PAGES[3]: page_notices,
     PAGES[4]: page_export,
-    PAGES[5]: page_about,
+    PAGES[5]: page_explore,
 }[page]()

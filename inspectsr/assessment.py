@@ -104,8 +104,7 @@ class Assessment:
         return pd.DataFrame(rows)
 
     def provenance_table(self) -> pd.DataFrame:
-        rows = [{"Item": "Tool", "Value": f"INSPECT-SR assistant v{__version__}"},
-                {"Item": "Framework", "Value": CITATION},
+        rows = [{"Item": "Tool", "Value": f"Retraction Watch check v{__version__}"},
                 {"Item": "Run started", "Value": self.run.started},
                 {"Item": "Run finished", "Value": self.run.finished},
                 {"Item": "Online sources used", "Value": "Yes" if self.run.online else "No (Retraction Watch only)"}]
@@ -120,15 +119,12 @@ class Assessment:
         n = len(self.studies)
         n_id = sum(s.identified for s in self.studies)
         srcs = ", ".join(self.run.sources.keys())
-        auto = ", ".join(f"{c} ({CHECKS_BY_ID[c].question.rstrip('?')})" for c in ("1.1", "1.2", "1.3", "2.2"))
         return (
-            f"The trustworthiness of the {n} included studies was assessed with INSPECT-SR ({CITATION}). "
-            f"To support checks {auto}, we used the INSPECT-SR assistant (v{__version__}) on {self.run.finished}. "
-            f"It identified {n_id}/{n} studies by DOI or PubMed ID and searched the following sources: {srcs}. "
-            "The tool proposed an answer for each automated check, and a reviewer verified it against the cited evidence "
-            "(retraction and correction notices, registry records). The remaining checks were answered by reviewers from the "
-            "full text. Domain and overall judgements followed the INSPECT-SR guidance: a retraction typically warrants "
-            "'serious concerns', and the overall judgement is at least as severe as the most severe domain."
+            f"On {self.run.finished}, the {n} included studies were checked for retractions and other post-publication "
+            f"notices with the Retraction Watch check app (v{__version__}). The app identified {n_id}/{n} studies by DOI or "
+            f"PubMed ID and searched the following sources: {srcs}. It also checked for retractions and expressions of "
+            "concern among other papers by each study's first and last authors, and compared trial registration dates "
+            "with study start dates. A reviewer verified every flagged finding against the cited notices and registry records."
         )
 
     # ---- exports ------------------------------------------------------------------

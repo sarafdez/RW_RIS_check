@@ -1,2 +1,2 @@
-"""INSPECT-SR assistant: automated support for INSPECT-SR trustworthiness checks."""
-__version__ = "0.2.0"
+"""Retraction Watch check: retraction and post-publication notice checks for included studies."""
+__version__ = "0.3.0"
