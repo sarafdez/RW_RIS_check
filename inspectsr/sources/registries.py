@@ -35,11 +35,31 @@ def registry_url(item: str) -> str:
     return REGISTRY_URLS.get(reg, ICTRP_URL).format(id=ident)
 
 
+FIELDS = ("protocolSection.statusModule,protocolSection.identificationModule,"
+          "protocolSection.designModule.enrollmentInfo")
+
+
+def ctgov_studies(ncts: list[str], chunk: int = 100) -> dict[str, dict]:
+    """Batch look-up: up to 100 trials per request."""
+    out: dict[str, dict] = {}
+    ids = sorted(set(ncts))
+    for i in range(0, len(ids), chunk):
+        part = ids[i:i + chunk]
+        data = get("https://clinicaltrials.gov/api/v2/studies",
+                   {"filter.ids": ",".join(part), "fields": FIELDS, "pageSize": len(part)})
+        for st in (data or {}).get("studies", []):
+            nct = st.get("protocolSection", {}).get("identificationModule", {}).get("nctId")
+            if nct:
+                out[nct] = _summ(nct, st)
+    return out
+
+
 def ctgov_study(nct: str) -> Optional[dict]:
-    data = get(CTGOV_API.format(nct), {"fields": "protocolSection.statusModule,protocolSection.identificationModule,"
-                                                 "protocolSection.designModule.enrollmentInfo"})
-    if not data:
-        return None
+    data = get(CTGOV_API.format(nct), {"fields": FIELDS})
+    return _summ(nct, data) if data else None
+
+
+def _summ(nct: str, data: dict) -> dict:
     ps = data.get("protocolSection", {})
     st = ps.get("statusModule", {})
     return {

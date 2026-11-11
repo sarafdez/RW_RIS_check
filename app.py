@@ -157,10 +157,13 @@ def page_input():
         "Design (detected)": s.design, "Source": f"{s.source_file} ({s.source_format})",
         "Citation text": s.raw[:300],
     } for s in ss.parsed])
-    use_cr = st.checkbox(
-        "Also search Crossref for references not found in PubMed or OpenAlex (slow: about 2 seconds per reference)",
-        value=False, help="Crossref's free API allows one request per second. Usually only needed for references "
-                          "whose title could not be read, e.g. unusual citation formats.")
+    mode = st.radio(
+        "Check type", list(pipeline.MODES), index=1, horizontal=True, format_func=lambda m: pipeline.MODES[m],
+        captions=["Seconds, even for 10,000 references. No internet needed. Matches by DOI, PubMed ID and title.",
+                  "Recommended. Also uses PubMed to find missing DOIs, its retraction tags and linked notices, and "
+                  "trial registrations. About 1 minute per 1,500 references.",
+                  "Also Crossref publisher notices (mainly corrections) and OpenAlex (papers not in PubMed, author "
+                  "IDs). Slow for large lists: Crossref allows 1 request per second."])
     st.caption("Untick records that are not included studies (e.g. notices or background references). You can fix a "
                "DOI, PMID or title directly in the table. Records without DOI/PMID will be looked up via Crossref.")
     edited = st.data_editor(
@@ -185,7 +188,7 @@ def page_input():
         def progress(p: float, msg: str):
             bar.progress(min(max(p, 0.0), 1.0), text=msg)
 
-        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress, use_crossref=use_cr)
+        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress, mode=mode)
         ss.assessment = build(studies, dossiers, info, rw, {"online": True})
         bar.progress(1.0, text="Done")
         goto(PAGES[1])
@@ -315,16 +318,17 @@ def page_overview():
     steps_def = [("DOI/PMID in your file", "1 · DOI or PubMed ID already in your file"),
                  ("Retraction Watch title match", "2 · Exact title found in Retraction Watch"),
                  ("PubMed title match", "3 · Found by title in PubMed"),
-                 ("OpenAlex title match", "4 · Found by title in OpenAlex"),
-                 ("Crossref citation match", "5 · Found by citation in Crossref (optional)"),
+                 ("OpenAlex title match", "4 · Found by title in OpenAlex (Extended)"),
+                 ("Crossref citation match", "5 · Found by citation in Crossref (Extended)"),
                  ("Not identified (title only)", "Not identified (title only)")]
     counts = summ["Identification"].value_counts()
     steps = [(label, int(counts.get(key, 0))) for key, label in steps_def]
     st.altair_chart(charts.funnel(steps), width="stretch")
     n_all, n_id = len(summ), int((~summ["Identification"].str.startswith("Not identified")).sum())
-    st.caption(f"After identification, **all {n_all} studies were checked against Retraction Watch**: "
-               f"{n_id} by DOI/PubMed ID and title, and {n_all - n_id} by title only. "
-               f"The {n_id} identified studies were also checked in Crossref, PubMed and OpenAlex.")
+    others = [k for k in ("PubMed", "Crossref", "OpenAlex") if k in a.run.sources]
+    st.caption(f"Check type: **{a.run.sources.get('Check type', '')}**. After identification, **all {n_all} studies "
+               f"were checked against Retraction Watch**: {n_id} by DOI/PubMed ID and title, and {n_all - n_id} by "
+               f"title only." + (f" The identified studies were also checked in {', '.join(others)}." if others else ""))
     if a.run.duplicates:
         st.caption(f"{len(a.run.duplicates)} duplicate(s) merged after identification.")
 
@@ -335,7 +339,8 @@ def page_overview():
 
 def charts_summary(summ: pd.DataFrame) -> list[str]:
     from inspectsr.status import summary_sentences
-    return summary_sentences(summ.to_dict("records"))
+    srcs = [k for k in ("PubMed", "Crossref", "OpenAlex") if k in ss.assessment.run.sources]
+    return summary_sentences(summ.to_dict("records"), ", ".join(srcs))
 
 
 # =====================================================================================

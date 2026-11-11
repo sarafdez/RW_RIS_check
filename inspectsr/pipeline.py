@@ -134,7 +134,7 @@ def _accept_openalex(study: Study, works: list[dict]) -> Optional[tuple[dict, st
 
 
 def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop,
-             use_crossref: bool = False):
+             use_crossref: bool = False, use_openalex: bool = False):
     """Fill in missing DOIs/PMIDs and metadata, cheapest source first.
 
     1. PubMed title search, batched (~10 titles per request; most included health studies are in PubMed).
@@ -165,7 +165,7 @@ def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progr
 
     # 2. OpenAlex title search, parallel
     rest = [s for s in todo if not s.identified and s.title and len(normalize_title(s.title) or "") >= 20]
-    if rest:
+    if rest and use_openalex:
         def _oa(s: Study):
             try:
                 return s, openalex.search_title(s.title), None
@@ -195,7 +195,8 @@ def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progr
     rest = [s for s in todo if not s.identified]
     if not use_crossref:
         for s in rest:
-            s.id_notes.append("Not found in PubMed or OpenAlex; checked against Retraction Watch by title only.")
+            s.id_notes.append("Not found in PubMed" + (" or OpenAlex" if use_openalex else "") +
+                              "; checked against Retraction Watch by title only.")
         rest = []
     t0 = time.monotonic()
     for i, s in enumerate(rest):
@@ -270,10 +271,12 @@ def _fill_metadata(s: Study, d: Dossier):
     s.design = detect_design(s.title, s.abstract, s.pub_types)
 
 
-def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop):
-    with_doi = [s for s in studies if s.doi]
+def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop,
+                  extended: bool = False):
+    with_doi = [s for s in studies if s.doi] if extended else []
 
-    progress(0.0, f"Crossref: notices for {len(with_doi)} DOIs")
+    if with_doi:
+        progress(0.0, f"Crossref: publisher notices for {len(with_doi)} DOIs")
     try:
         works = crossref.works_by_doi([s.doi for s in with_doi])
         for s in with_doi:
@@ -285,9 +288,10 @@ def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: 
         for s in with_doi:
             dossiers[s.uid].errors.append(f"Crossref: {e}")
 
-    progress(0.0, "OpenAlex")
+    if with_doi:
+        progress(0.0, "OpenAlex")
     try:
-        works = openalex.works_by_doi([s.doi for s in with_doi])
+        works = openalex.works_by_doi([s.doi for s in with_doi]) if with_doi else {}
         for s in with_doi:
             if s.doi in works:
                 dossiers[s.uid].openalex = works[s.doi]
@@ -301,19 +305,23 @@ def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: 
 
     # Registries (ClinicalTrials.gov automatically)
     ncts = [(s, t) for s in studies for t in s.trial_ids if t.startswith("ClinicalTrials.gov")]
-    for i, (s, t) in enumerate(ncts):
-        progress(i / max(len(ncts), 1), f"ClinicalTrials.gov: {i + 1}/{len(ncts)}")
+    if ncts:
+        progress(0.0, f"ClinicalTrials.gov: {len(ncts)} trial registrations")
         try:
-            rec = registries.ctgov_study(t.split(": ")[1])
-            if rec:
-                dossiers[s.uid].registrations[t] = rec
-                if "ClinicalTrials.gov" not in dossiers[s.uid].sources_checked:
-                    dossiers[s.uid].sources_checked.append("ClinicalTrials.gov")
+            recs = registries.ctgov_studies([t.split(": ")[1] for _, t in ncts])
+            for s, t in ncts:
+                rec = recs.get(t.split(": ")[1])
+                if rec:
+                    dossiers[s.uid].registrations[t] = rec
+                    if "ClinicalTrials.gov" not in dossiers[s.uid].sources_checked:
+                        dossiers[s.uid].sources_checked.append("ClinicalTrials.gov")
         except SourceError as e:
-            dossiers[s.uid].errors.append(f"ClinicalTrials.gov: {e}")
+            for s, _ in ncts:
+                dossiers[s.uid].errors.append(f"ClinicalTrials.gov: {e}")
 
     # Author track records via OpenAlex (disambiguated author IDs) for first and last authors
-    progress(0.0, "OpenAlex: research team track record")
+    if with_doi:
+        progress(0.0, "OpenAlex: research team track record")
     wanted: dict[str, list[tuple[str, str]]] = {}
     for s in with_doi:
         w = dossiers[s.uid].openalex
@@ -438,7 +446,8 @@ def _merge_duplicates(studies: list[Study], dossiers: dict, info: RunInfo):
     studies[:] = keep
 
 
-def fetch_notice_titles(studies: list[Study], dossiers: dict, rw: RWIndex, progress: Progress = _noop):
+def fetch_notice_titles(studies: list[Study], dossiers: dict, rw: RWIndex, progress: Progress = _noop,
+                        extended: bool = False):
     """Titles and citations of the notices themselves (retraction notes, EoCs, errata), fetched in batches.
     The full wording of a notice is only on the journal's website; databases keep its title and citation."""
     refs = pubmed.RETRACTION_REFS | pubmed.CONCERN_REFS | pubmed.CORRECTION_REFS
@@ -461,7 +470,7 @@ def fetch_notice_titles(studies: list[Study], dossiers: dict, rw: RWIndex, progr
     except Exception as e:
         info["_error"] = str(e)
     try:
-        for doi, it in crossref.works_by_doi(sorted(dois)).items():
+        for doi, it in (crossref.works_by_doi(sorted(dois)) if extended else {}).items():
             issued = ((it.get("issued") or {}).get("date-parts") or [[None]])[0][0]
             cit = " ".join(filter(None, [(it.get("container-title") or [""])[0], str(issued or "")]))
             info.setdefault(f"doi:{doi}", {"title": (it.get("title") or [""])[0], "citation": cit})
@@ -488,9 +497,21 @@ def identify_from_rw(studies: list[Study], rw: RWIndex):
                 break
 
 
+MODES = {
+    "quick": "Quick: Retraction Watch only",
+    "standard": "Standard: Retraction Watch + PubMed",
+    "extended": "Extended: + Crossref publisher notices and OpenAlex",
+}
+
+
 def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progress = _noop,
-        use_crossref: bool = False) -> tuple[dict, RunInfo]:
+        mode: str = "standard") -> tuple[dict, RunInfo]:
+    """mode: 'quick' (Retraction Watch only, no internet), 'standard' (+ PubMed and ClinicalTrials.gov) or
+    'extended' (+ Crossref publisher notices, OpenAlex title search and author IDs, Crossref citation matching)."""
+    online = online and mode != "quick"
+    extended = mode == "extended"
     info = RunInfo(started=now_utc(), online=online)
+    info.sources["Check type"] = MODES.get(mode, mode)
     dossiers = {s.uid: Dossier() for s in studies}
     info.sources["Retraction Watch"] = (
         f"{rw.meta.get('source')}; file downloaded {rw.meta.get('downloaded_on')}; "
@@ -498,19 +519,20 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
     )
     identify_from_rw(studies, rw)
     if online:
-        identify(studies, dossiers, progress, use_crossref=use_crossref)
+        identify(studies, dossiers, progress, use_crossref=extended, use_openalex=extended)
         _merge_duplicates(studies, dossiers, info)
-        gather_online(studies, dossiers, progress)
-        info.sources["Crossref"] = f"REST API (works, updated-by, citation matching), queried {now_utc()}"
-        info.sources["PubMed"] = f"NCBI E-utilities (publication types, linked notices, databank IDs), queried {now_utc()}"
-        info.sources["OpenAlex"] = f"API (is_retracted, author-disambiguated retractions), queried {now_utc()}"
+        gather_online(studies, dossiers, progress, extended=extended)
+        info.sources["PubMed"] = f"NCBI E-utilities (identifiers, retraction tags, linked notices, trial IDs), queried {now_utc()}"
         info.sources["ClinicalTrials.gov"] = f"API v2 (registration and start dates), queried {now_utc()}"
+        if extended:
+            info.sources["Crossref"] = f"REST API (publisher notices, citation matching), queried {now_utc()}"
+            info.sources["OpenAlex"] = f"API (title search, is_retracted, author IDs), queried {now_utc()}"
     else:
         for s in studies:
             s.design = detect_design(s.title, s.abstract, s.pub_types)
     match_rw(studies, dossiers, rw, progress)
     if online:
-        fetch_notice_titles(studies, dossiers, rw, progress)
+        fetch_notice_titles(studies, dossiers, rw, progress, extended=extended)
     info.errors = sorted({e for d in dossiers.values() for e in d.errors})
     info.finished = now_utc()
     return dossiers, info

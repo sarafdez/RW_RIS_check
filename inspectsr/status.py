@@ -205,14 +205,14 @@ def identification_label(s: Study) -> str:
     return m
 
 
-def summary_sentences(rows: list[dict]) -> list[str]:
+def summary_sentences(rows: list[dict], sources: str = "") -> list[str]:
     """rows: one dict per study with Status, Identification, Study."""
     n = len(rows)
     by = {}
     for r in rows:
         by.setdefault(r["Status"], []).append(r)
     retracted = by.get("Retracted", []) + by.get("Retracted and replaced", [])
-    out = [f"**{n} studies** were checked against Retraction Watch, Crossref, PubMed and OpenAlex."]
+    out = [f"**{n} studies** were checked against Retraction Watch" + (f" and {sources}" if sources else "") + "."]
     if retracted:
         names = ", ".join(r["Study"] for r in retracted[:6]) + (" …" if len(retracted) > 6 else "")
         out.append(f"**{len(retracted)} {'is' if len(retracted) == 1 else 'are'} retracted** ({names}).")
