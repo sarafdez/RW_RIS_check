@@ -306,11 +306,20 @@ def page_overview():
                          width="stretch")
 
     st.markdown("#### How the studies were identified")
-    order = ["DOI/PMID in your file", "Retraction Watch title match", "PubMed title match", "Crossref citation match",
-             "Not identified (title only)"]
+    st.caption("To check a study reliably, the app first needs its DOI or PubMed ID. It tries these steps in order "
+               "and stops at the first that works. A step showing 0 just means no study needed it or matched there.")
+    steps_def = [("DOI/PMID in your file", "1 · DOI or PubMed ID already in your file"),
+                 ("Retraction Watch title match", "2 · Exact title found in Retraction Watch"),
+                 ("PubMed title match", "3 · Found by title in PubMed"),
+                 ("Crossref citation match", "4 · Found by citation in Crossref"),
+                 ("Not identified (title only)", "Not identified (title only)")]
     counts = summ["Identification"].value_counts()
-    steps = [(o, int(counts.get(o, 0))) for o in order if counts.get(o, 0)]
+    steps = [(label, int(counts.get(key, 0))) for key, label in steps_def]
     st.altair_chart(charts.funnel(steps), width="stretch")
+    n_all, n_id = len(summ), int((~summ["Identification"].str.startswith("Not identified")).sum())
+    st.caption(f"After identification, **all {n_all} studies were checked against Retraction Watch**: "
+               f"{n_id} by DOI/PubMed ID and title, and {n_all - n_id} by title only. "
+               f"The {n_id} identified studies were also checked in Crossref, PubMed and OpenAlex.")
     if a.run.duplicates:
         st.caption(f"{len(a.run.duplicates)} duplicate(s) merged after identification.")
 
