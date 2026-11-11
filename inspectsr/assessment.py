@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import io
-import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 import pandas as pd
 
 from . import __version__
-from .framework import CHECKS, CHECKS_BY_ID, CITATION, DOMAINS, DOMAIN_SHORT
-from .judgement import DomainStatus, domain_statuses, final_answer, overall_label, suggest_overall
-from .models import Answer, CheckResult, Judgement, Study
+from .framework import CHECKS_BY_ID
+from .models import CheckResult, Study
 from .pipeline import RunInfo
+from .status import DECISIONS, Flag, Notice, group, identification_label, notices, study_status
+
+CHECK_LABELS = {"1.1": "Retraction", "1.2": "Expression of concern / correction",
+                "1.3": "Authors' other retractions", "2.2": "Trial registration"}
 
 
 @dataclass
@@ -20,65 +22,64 @@ class Assessment:
     studies: list[Study]
     results: dict[str, dict[str, CheckResult]]
     run: RunInfo
-    settings: dict = field(default_factory=dict)                 # e.g. search_date, online
-    reviewer: dict = field(default_factory=dict)                 # uid -> check_id -> {answer, note}
-    domain_overrides: dict = field(default_factory=dict)         # uid -> domain -> {judgement, reason}
-    overall_overrides: dict = field(default_factory=dict)        # uid -> {judgement, reason}
-
-    # ---- judgements -------------------------------------------------------------
-    def domains(self, uid: str) -> dict[int, DomainStatus]:
-        return domain_statuses(self.results[uid], self.reviewer.get(uid, {}), self.domain_overrides.get(uid, {}))
-
-    def overall(self, uid: str) -> tuple[Judgement, bool, bool]:
-        """(judgement, complete, overridden)"""
-        ov = self.overall_overrides.get(uid) or {}
-        if ov.get("judgement"):
-            return Judgement(ov["judgement"]), True, True
-        j, complete = suggest_overall(self.domains(uid))
-        return j, complete, False
-
-    def answer(self, uid: str, cid: str) -> Answer:
-        return final_answer(self.results[uid][cid], self.reviewer.get(uid, {}).get(cid))
+    settings: dict = field(default_factory=dict)
+    decisions: dict = field(default_factory=dict)   # uid -> {"decision": one of DECISIONS, "note": str}
 
     def study(self, uid: str) -> Study:
         return next(s for s in self.studies if s.uid == uid)
+
+    def status(self, uid: str) -> tuple[str, list[Flag]]:
+        return study_status(self.study(uid), self.results[uid], self.decisions.get(uid))
+
+    def notices(self, uid: str) -> list[Notice]:
+        return notices(self.results[uid])
+
+    def decision(self, uid: str) -> str:
+        return (self.decisions.get(uid) or {}).get("decision") or DECISIONS[0]
 
     # ---- tables ------------------------------------------------------------------
     def summary_table(self) -> pd.DataFrame:
         rows = []
         for s in self.studies:
-            doms = self.domains(s.uid)
-            ov, complete, ov_flag = self.overall(s.uid)
-            res = self.results[s.uid]
+            status, fl = self.status(s.uid)
+            ns = [n for n in self.notices(s.uid) if not n.possible]
             rows.append({
-                "ID": s.uid, "Study": s.label, "Title": s.title, "Year": s.year, "Journal": s.journal,
-                "Design (detected)": s.design, "DOI": s.doi, "PMID": s.pmid,
-                "Identification": f"{s.id_method} ({s.id_confidence})",
-                "Trial IDs": "; ".join(s.trial_ids),
-                **{f"{c}": self.answer(s.uid, c) .value for c in ("1.1", "1.2", "1.3", "2.2")},
-                **{DOMAIN_SHORT[k]: v.final.value for k, v in doms.items()},
-                "Overall": overall_label(ov, complete),
-                "Overall (raw)": ov.value,
-                "Needs review": sum(r.needs_review and not self.reviewer.get(s.uid, {}).get(cid, {}).get("answer")
-                                    for cid, r in res.items()),
+                "ID": s.uid, "Status": status, "Group": group(status), "Study": s.label, "Title": s.title,
+                "Journal": s.journal, "Year": s.year,
+                "Why": " ".join(f.why for f in fl) if fl else "",
+                "Notices": "; ".join(f"{n.type} {n.date[:10] if n.date else ''}".strip() for n in ns),
+                "Reasons (Retraction Watch)": "; ".join(dict.fromkeys(r for n in ns for r in n.reasons)),
+                "Sources": ", ".join(dict.fromkeys(x for n in ns for x in n.sources)),
+                "Reviewer decision": self.decision(s.uid),
+                "Reviewer note": (self.decisions.get(s.uid) or {}).get("note", ""),
+                "DOI": s.doi, "PMID": s.pmid, "Identification": identification_label(s),
+                "Design (detected)": s.design, "Trial IDs": "; ".join(s.trial_ids),
                 "Source file": s.source_file,
             })
-        return pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            from .status import ORDER
+            df = df.sort_values(["Status", "ID"], key=lambda c: c.map(ORDER) if c.name == "Status" else c)
+        return df
+
+    def notices_table(self) -> pd.DataFrame:
+        rows = []
+        for s in self.studies:
+            for n in self.notices(s.uid):
+                rows.append({"ID": s.uid, "Study": s.label, "Notice": n.type, "Date": n.date,
+                             "Possible match only": n.possible, "Reported by": n.sources_label,
+                             "Reasons (Retraction Watch)": "; ".join(n.reasons), "Note": n.note,
+                             "Links": " ".join(n.links)})
+        return pd.DataFrame(rows, columns=["ID", "Study", "Notice", "Date", "Possible match only", "Reported by",
+                                           "Reasons (Retraction Watch)", "Note", "Links"])
 
     def checks_table(self) -> pd.DataFrame:
         rows = []
         for s in self.studies:
-            for c in CHECKS:
-                r = self.results[s.uid][c.id]
-                rv = self.reviewer.get(s.uid, {}).get(c.id, {})
-                rows.append({
-                    "ID": s.uid, "Study": s.label, "Domain": c.domain, "Check": c.id, "Question": c.question,
-                    "Automated": r.automated, "Proposed answer": r.proposed.value,
-                    "Reviewer answer": rv.get("answer") or "", "Final answer": self.answer(s.uid, c.id).value,
-                    "Rationale": r.rationale, "Reviewer note": rv.get("note", ""),
-                    "Needs review": r.needs_review, "N evidence": len(r.evidence),
-                    "Guidance": c.guidance_url,
-                })
+            for cid, r in self.results[s.uid].items():
+                rows.append({"ID": s.uid, "Study": s.label, "Check": CHECK_LABELS.get(cid, cid),
+                             "Question": CHECKS_BY_ID[cid].question if cid in CHECKS_BY_ID else "",
+                             "Finding": r.proposed.value, "Explanation": r.rationale, "N evidence": len(r.evidence)})
         return pd.DataFrame(rows)
 
     def evidence_table(self) -> pd.DataFrame:
@@ -86,31 +87,16 @@ class Assessment:
         for s in self.studies:
             for cid, r in self.results[s.uid].items():
                 for e in r.evidence:
-                    rows.append({"ID": s.uid, "Study": s.label, "Check": cid, "Source": e.source, "Type": e.kind,
-                                 "Date": e.date, "Detail": e.detail, "Link": e.url, "Matched by": e.match})
+                    rows.append({"ID": s.uid, "Study": s.label, "Check": CHECK_LABELS.get(cid, cid), "Source": e.source,
+                                 "Type": e.kind, "Date": e.date, "Detail": e.detail, "Link": e.url, "Matched by": e.match})
         return pd.DataFrame(rows, columns=["ID", "Study", "Check", "Source", "Type", "Date", "Detail", "Link", "Matched by"])
-
-    def judgements_table(self) -> pd.DataFrame:
-        rows = []
-        for s in self.studies:
-            for dom, st in self.domains(s.uid).items():
-                rows.append({"ID": s.uid, "Study": s.label, "Domain": f"D{dom}", "Domain name": DOMAINS[dom],
-                             "Suggested": st.suggested.value, "Final": st.final.value, "Overridden": st.overridden,
-                             "Reason": st.reason, "Checks answered": f"{st.answered}/{st.total}"})
-            ov, complete, flag = self.overall(s.uid)
-            rows.append({"ID": s.uid, "Study": s.label, "Domain": "Overall", "Domain name": "Overall study judgement",
-                         "Suggested": ov.value, "Final": overall_label(ov, complete), "Overridden": flag,
-                         "Reason": (self.overall_overrides.get(s.uid) or {}).get("reason", ""), "Checks answered": ""})
-        return pd.DataFrame(rows)
 
     def provenance_table(self) -> pd.DataFrame:
         rows = [{"Item": "Tool", "Value": f"Retraction Watch check v{__version__}"},
                 {"Item": "Run started", "Value": self.run.started},
-                {"Item": "Run finished", "Value": self.run.finished},
-                {"Item": "Online sources used", "Value": "Yes" if self.run.online else "No (Retraction Watch only)"}]
-        if self.settings.get("search_date"):
-            rows.append({"Item": "Review search date", "Value": str(self.settings["search_date"])})
+                {"Item": "Run finished", "Value": self.run.finished}]
         rows += [{"Item": f"Source: {k}", "Value": v} for k, v in self.run.sources.items()]
+        rows += [{"Item": "Merged duplicate", "Value": d} for d in self.run.duplicates]
         rows += [{"Item": "Source error", "Value": e} for e in self.run.errors[:50]]
         return pd.DataFrame(rows)
 
@@ -132,20 +118,19 @@ class Assessment:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:
             sheets = {
-                "Summary": self.summary_table().drop(columns=["Overall (raw)"]),
-                "Judgements": self.judgements_table(),
+                "Summary": self.summary_table().drop(columns=["Group"]),
+                "Notices": self.notices_table(),
                 "Checks": self.checks_table(),
                 "Evidence": self.evidence_table(),
                 "Provenance": self.provenance_table(),
                 "Methods text": pd.DataFrame({"Methods text (draft)": [self.methods_text()]}),
             }
             wb = xw.book
-            fmt = {
-                Judgement.SERIOUS_CONCERNS.value: wb.add_format({"bg_color": "#f4c7c7"}),
-                Judgement.SOME_CONCERNS.value: wb.add_format({"bg_color": "#fde8b4"}),
-                Judgement.NO_CONCERNS.value: wb.add_format({"bg_color": "#c9ecc9"}),
-                Answer.YES.value: wb.add_format({"bg_color": "#f4c7c7"}),
-            }
+            fmt = {"Retracted": wb.add_format({"bg_color": "#f4c7c7"}),
+                   "Retracted and replaced": wb.add_format({"bg_color": "#f4c7c7"}),
+                   "Expression of concern": wb.add_format({"bg_color": "#f9d9cc"}),
+                   "Correction": wb.add_format({"bg_color": "#fde8b4"}),
+                   "No notices found": wb.add_format({"bg_color": "#c9ecc9"})}
             for name, df in sheets.items():
                 df.to_excel(xw, sheet_name=name, index=False)
                 ws = xw.sheets[name]
@@ -158,29 +143,6 @@ class Assessment:
                     ws.conditional_format(1, 0, max(len(df), 1), len(df.columns) - 1,
                                           {"type": "cell", "criteria": "==", "value": f'"{val}"', "format": f})
         return buf.getvalue()
-
-    def to_json(self) -> str:
-        return json.dumps({
-            "tool": "inspect-sr-assistant", "version": __version__,
-            "run": asdict(self.run), "settings": {k: str(v) for k, v in self.settings.items()},
-            "studies": [s.to_dict() for s in self.studies],
-            "results": {uid: {cid: r.to_dict() for cid, r in res.items()} for uid, res in self.results.items()},
-            "reviewer": self.reviewer, "domain_overrides": self.domain_overrides,
-            "overall_overrides": self.overall_overrides,
-        }, indent=1, default=str)
-
-    @classmethod
-    def from_json(cls, text: str) -> "Assessment":
-        d = json.loads(text)
-        if d.get("tool") != "inspect-sr-assistant":
-            raise ValueError("Not an INSPECT-SR assistant assessment file.")
-        return cls(
-            studies=[Study.from_dict(s) for s in d["studies"]],
-            results={uid: {cid: CheckResult.from_dict(r) for cid, r in res.items()} for uid, res in d["results"].items()},
-            run=RunInfo(**d["run"]), settings=d.get("settings", {}),
-            reviewer=d.get("reviewer", {}), domain_overrides=d.get("domain_overrides", {}),
-            overall_overrides=d.get("overall_overrides", {}),
-        )
 
 
 def build(studies: list[Study], dossiers: dict, run: RunInfo, rw, settings: Optional[dict] = None) -> Assessment:

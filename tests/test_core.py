@@ -5,8 +5,8 @@ import pytest
 from inspectsr import inputs
 from inspectsr.assessment import Assessment
 from inspectsr.checks import check_1_1, check_1_2, check_1_3, check_2_2, run_checks
-from inspectsr.judgement import domain_statuses, suggest_overall
-from inspectsr.models import Answer, Judgement, Study
+from inspectsr.status import notices, study_status
+from inspectsr.models import Answer, Study
 from inspectsr.normalize import (author_keys, detect_design, find_trial_ids, is_group_author, is_notice_title,
                                  normalize_doi, normalize_pmid, normalize_title)
 from inspectsr.pipeline import Dossier, RunInfo, match_rw
@@ -157,7 +157,7 @@ def _rw():
         _row("1", "Effect of drug X on outcome Y: a randomised trial", "John Smith;Jane Doe", "Retraction",
              "5/1/2021 0:00", "1/1/2019 0:00", "10.1234/abc.2019.1", "0", "10.1234/ret.1",
              "+Falsification/Fabrication of Data;+Investigation by Journal/Publisher;"),
-        _row("2", "Another paper by the same team about Z", "John Smith;Al Other", "Retraction",
+        _row("2", "Another paper by the same team about Z", "John Smith;Jane Doe;Al Other", "Retraction",
              "5/1/2022 0:00", "1/1/2020 0:00", "10.1234/other", "0", "10.1234/ret.2", "+Paper Mill;"),
         _row("3", "Pain relief after knee surgery with drug Q", "Ann Lee", "Expression of concern",
              "3/3/2023 0:00", "1/1/2017 0:00", "unavailable", "0", "10.9/eoc", "+Concerns/Issues about Data;"),
@@ -186,9 +186,8 @@ def test_retraction_by_doi_is_serious():
     rw, d = _run([s])
     r = check_1_1(s, d[s.uid], rw)
     assert r.proposed == Answer.YES and r.suggests_serious
-    doms = domain_statuses(run_checks(s, d[s.uid], rw), {}, {})
-    assert doms[1].suggested == Judgement.SERIOUS_CONCERNS
-    assert suggest_overall(doms) == (Judgement.SERIOUS_CONCERNS, True)
+    status, fl = study_status(s, run_checks(s, d[s.uid], rw))
+    assert status == "Retracted" and "Falsification" in fl[0].why
 
 
 def test_team_check_finds_other_retraction_but_not_own():
@@ -197,6 +196,14 @@ def test_team_check_finds_other_retraction_but_not_own():
     r = check_1_3(s, d[s.uid], rw)
     assert r.proposed == Answer.YES and r.needs_review
     assert r.evidence and all("Another paper" in e.detail for e in r.evidence)  # own retraction excluded
+
+
+def test_team_check_name_only_match_is_not_flagged():
+    s = Study("", title="Unrelated trial of something else entirely", authors=["Smith, John", "Brown, Bob"],
+              year=2019, doi="10.1234/unrelated")
+    rw, d = _run([s])
+    r = check_1_3(s, d[s.uid], rw)
+    assert r.proposed == Answer.UNCLEAR and not r.needs_review  # possible namesake: shown, not flagged
 
 
 def test_eoc_by_exact_title_with_corroboration():
@@ -231,15 +238,39 @@ def test_registration_rules():
     assert check_2_2(Study("", design="RCT"), Dossier(), None).proposed == Answer.UNCLEAR
 
 
-def test_reviewer_override_and_json_roundtrip():
+def test_false_match_decision_clears_status_and_excel_exports():
     s = _smith()
     rw, d = _run([s])
     a = Assessment([s], {s.uid: run_checks(s, d[s.uid], rw)}, RunInfo(started="t", finished="t"))
-    a.reviewer[s.uid] = {"1.1": {"answer": "No", "note": "False match"}}
-    assert a.domains(s.uid)[1].suggested != Judgement.SERIOUS_CONCERNS
-    b = Assessment.from_json(a.to_json())
-    assert b.reviewer == a.reviewer and b.results[s.uid]["1.1"].proposed == Answer.YES
-    assert len(b.to_excel()) > 1000
+    assert a.status(s.uid)[0] == "Retracted"
+    a.decisions[s.uid] = {"decision": "False match – ignore", "note": "different paper"}
+    assert a.status(s.uid)[0] == "No notices found"
+    assert a.summary_table().iloc[0]["Reviewer note"] == "different paper"
+    assert len(a.to_excel()) > 1000
+
+
+def test_notices_are_merged_across_sources():
+    from inspectsr.models import CheckResult, Evidence
+    ev = [Evidence("Retraction Watch", "Retraction", "Paper Mill; Investigation by Journal/Publisher", "2021-05-01",
+                   "https://doi.org/10.1/r", "doi"),
+          Evidence("Crossref", "Retraction", "Asserted by: retraction-watch", "2021-05-01", "https://doi.org/10.1/r", "doi"),
+          Evidence("Crossref", "Retraction", "Asserted by: publisher", "2021-04-20", "https://doi.org/10.1/r", "doi"),
+          Evidence("PubMed", "Retraction in", "J X. 2021", "2021", None, "pmid"),
+          Evidence("PubMed", "Retracted Publication", "PubMed publication type", None, None, "pmid")]
+    res = {"1.1": CheckResult("1.1", Answer.YES, "", ev, data={"kind": "retraction"})}
+    ns = notices(res)
+    assert len(ns) == 1
+    assert ns[0].sources == ["Crossref", "Retraction Watch", "Crossref (from RW)", "PubMed"]
+    assert ns[0].reasons == ["Paper Mill", "Investigation by Journal/Publisher"]
+
+
+def test_correction_and_possible_match_are_concerns_not_retractions():
+    s = Study("", title="Thymectomy trial", authors=["Wolfe, Gil"], year=2016, doi="10.1056/nejmoa1602489")
+    rw, d = _run([s])
+    assert study_status(s, run_checks(s, d[s.uid], rw))[0] == "Correction"
+    s2 = Study("", title="Pain relief after knee surgery using drug Q", authors=["Brown, Bob"], year=2005)
+    rw, d = _run([s2])
+    assert study_status(s2, run_checks(s2, d[s2.uid], rw))[0] == "Possible match"
 
 
 # ---- identification helpers --------------------------------------------------------

@@ -363,6 +363,10 @@ DOI_RE_SIMPLE = re.compile(r"10\.\d{4,9}/\S+")
 def _guess_title(ref: str) -> Optional[str]:
     """Best-effort title from Vancouver/APA-style citation: the sentence after the author list."""
     r = re.sub(r"https?://\S+|doi:\s*\S+|10\.\d{4,9}/\S+", "", ref, flags=re.I)
+    # Title in quotes: Authors. 2021. "Title". Journal...
+    m = re.search(r"[\"“”]([^\"“”]{15,})[\"“”]", r)
+    if m:
+        return m.group(1).strip().rstrip(".")
     # APA: Authors (2020). Title. Journal...
     m = re.search(r"\((?:19|20)\d{2}[a-z]?\)\.\s*(.+?[\.\?!])\s", r + " ")
     if m:

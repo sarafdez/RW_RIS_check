@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Callable
 
-from .framework import CHECKS
 from .models import Answer, CheckResult, Evidence, Study
 from .normalize import parse_date
 from .pipeline import Dossier
@@ -71,30 +70,33 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
 
     if s.design == "Notice (not a study)":
         return CheckResult("1.1", Answer.UNCLEAR, "This record looks like a notice (retraction/correction), "
-                           "not the study itself. Replace it with the original article and re-run.", ev, True)
+                           "not the study itself. Replace it with the original article and re-run.", ev, True,
+                           data={"kind": "notice_record"})
     if ev and not (reinstated and len(ev) == sum(e.kind == "Reinstatement" for e in ev)):
         n_src = len({e.source for e in ev})
         if replace:
             return CheckResult("1.1", Answer.YES,
                                f"Retraction found ({n_src} source(s)), but it is a retract-and-replace: the "
-                               "replacement version can be assessed instead.", ev, True)
+                               "replacement version can be assessed instead.", ev, True, data={"kind": "replace"})
         if reinstated:
             return CheckResult("1.1", Answer.YES, "Retraction found, but Retraction Watch also lists a reinstatement. "
-                               "Read the notices.", ev, True)
+                               "Read the notices.", ev, True, data={"kind": "reinstated"})
         return CheckResult("1.1", Answer.YES,
                            f"Retraction found in {n_src} source(s): {', '.join(sorted({e.source for e in ev}))}. "
-                           "A retraction would typically warrant 'serious concerns' for the study, whatever the reason.", ev, needs_review=False, suggests_serious=True)
+                           "A retraction would typically warrant 'serious concerns' for the study, whatever the reason.", ev, needs_review=False, suggests_serious=True,
+                           data={"kind": "retraction"})
     if possible:
         return CheckResult("1.1", Answer.UNCLEAR, "Possible retraction: a similar title is in Retraction Watch but the "
                            "match could not be confirmed by DOI/PMID, author or year. Verify manually." +
-                           _not_identified_note(s), possible, True)
+                           _not_identified_note(s), possible, True, data={"kind": "possible"})
     srcs = ", ".join(dict.fromkeys(d.sources_checked)) or "Retraction Watch"
     if not s.identified and not s.title:
-        return CheckResult("1.1", Answer.UNCLEAR, "The study could not be identified (no DOI, PMID or title).", [], True)
+        return CheckResult("1.1", Answer.UNCLEAR, "The study could not be identified (no DOI, PMID or title).", [], True,
+                           data={"kind": "unidentified"})
     return CheckResult("1.1", Answer.NO if s.identified else Answer.UNCLEAR,
                        f"No retraction found in: {srcs}." + _not_identified_note(s) +
                        " Guidance: also check the article page on the journal website, and repeat shortly before "
-                       "finishing the review.", [], needs_review=not s.identified)
+                       "finishing the review.", [], needs_review=False, data={"kind": "none"})
 
 
 # ---- 1.2 Expressions of concern and other notices ------------------------------------
@@ -130,13 +132,15 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         msg = "Expression of concern found. Read the notice: is an investigation ongoing? Check the journal site again before finishing the review."
         if lifted:
             msg += " Retraction Watch indicates the expression of concern was later lifted."
-        return CheckResult("1.2", Answer.YES, msg, eoc + other + comments, needs_review=True)
+        return CheckResult("1.2", Answer.YES, msg, eoc + other + comments, needs_review=True, data={"kind": "eoc"})
     if other:
         return CheckResult("1.2", Answer.UNCLEAR,
                            f"{len(other)} correction/erratum notice(s) found. Corrections are often honest errors; read "
-                           "each notice to judge whether it is relevant to trustworthiness.", other + comments, True)
+                           "each notice to judge whether it is relevant to trustworthiness.", other + comments, True,
+                           data={"kind": "correction"})
     if possible:
-        return CheckResult("1.2", Answer.UNCLEAR, "Possible notice found via fuzzy title match; verify.", possible, True)
+        return CheckResult("1.2", Answer.UNCLEAR, "Possible notice found via fuzzy title match; verify.", possible, True,
+                           data={"kind": "possible"})
     note = ""
     if comments:
         note = (f" {len(comments)} comment(s)/letter(s) are linked in PubMed. Guidance: critical correspondence "
@@ -144,7 +148,7 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     return CheckResult("1.2", Answer.NO if s.identified else Answer.UNCLEAR,
                        "No expression of concern or correction found." + note + _not_identified_note(s) +
                        " Also consider PubPeer comments (link on the study page).", comments,
-                       needs_review=bool(comments) or not s.identified)
+                       needs_review=False, data={"kind": "none", "comments": len(comments)})
 
 
 # ---- 1.3 Other studies by the research team -------------------------------------------
@@ -154,7 +158,23 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         return CheckResult("1.3", Answer.UNCLEAR, "No author names available, so this could not be checked.", [], True)
     ev: list[Evidence] = []
     strong, weak = 0, 0
-    lines = []
+    lines, triggers = [], []
+    from .normalize import author_keys
+
+    def _key(name: str) -> str | None:
+        return author_keys(name).get("full")  # full first names only: initials are too common to prove identity
+
+    def coauthor_overlap(rec: dict, name: str) -> bool:
+        """Another author of the study (same family name AND first name/initial) is also on the retracted paper:
+        a strong sign it is the same research team, not a namesake."""
+        own = _key(name)
+        ours = {k for a in s.authors if (k := _key(a)) and k != own}
+        theirs = set()
+        for x in str(rec["authors"]).split(";"):
+            if (k := author_keys(x.strip()).get("full")):
+                theirs.add(k)
+        return bool(ours & theirs)
+
     for name, hit in d.author_rw.items():
         recs = [rw.record(r) for r in hit["rows"]]
         recs = [r for r in recs if r["nature"] in ("Retraction", "Expression of concern")]
@@ -162,13 +182,17 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
             continue
         integ = [r for r in recs if any(integrity_related(x) for x in r["reasons"])]
         specific = hit["specificity"] == "full name"
-        if specific and integ:
+        shared = [r for r in integ if coauthor_overlap(r, name)]
+        if specific and shared:
             strong += 1
+            triggers.append(f"{name} has {len(shared)} other integrity-related retraction(s) in Retraction Watch "
+                            f"on papers shared with a co-author of this study.")
         else:
             weak += 1
         role = "first author" if name == s.first_author else "last author"
         lines.append(f"{name} ({role}): {len(recs)} retraction/EoC record(s) in Retraction Watch matched by "
-                     f"{hit['specificity']}; {len(integ)} with integrity-related reasons.")
+                     f"{hit['specificity']}; {len(integ)} with integrity-related reasons"
+                     + (f", {len(shared)} sharing a co-author with this study." if shared else "."))
         for r in sorted(recs, key=lambda r: r["notice_date"] or "", reverse=True)[:8]:
             ev.append(Evidence("Retraction Watch", f"{r['nature']} ({role})",
                                f"{r['title'][:140]} — {'; '.join(r['reasons'][:4])}",
@@ -176,21 +200,36 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                                f"author:{hit['specificity']}"))
     oa_hits = 0
     for name, works in d.author_openalex.items():
-        if works:
+        if not works:
+            continue
+        # Cross-check each retracted work in Retraction Watch: only integrity-related retractions count
+        # (a retraction for honest error is not a warning sign about the team).
+        integ_works = []
+        for w in works:
+            recs = [rw.record(r) for r in rw.find_by_doi(w.get("doi"))]
+            reasons = sorted({x for r in recs for x in r["reasons"]})
+            w = {**w, "reasons": reasons, "integrity": any(integrity_related(x) for x in reasons)}
+            integ_works.append(w)
+        n_int = sum(w["integrity"] for w in integ_works)
+        if n_int:
             oa_hits += 1
-            lines.append(f"{name}: {len(works)} other retracted work(s) in OpenAlex (author-disambiguated).")
-            for w in works[:8]:
-                ev.append(Evidence("OpenAlex", "Retracted work by same author", f"{w['title'] or ''}"[:160],
-                                   str(w.get("year") or ""), DOI.format(w["doi"]) if w.get("doi") else w.get("openalex"),
-                                   "author:openalex id"))
+            triggers.append(f"{name} has {n_int} other integrity-related retraction(s) (same OpenAlex author ID).")
+        lines.append(f"{name}: {len(works)} other retracted work(s) in OpenAlex (matched by author ID), "
+                     f"{n_int} with integrity-related reasons in Retraction Watch.")
+        for w in sorted(integ_works, key=lambda w: not w["integrity"])[:8]:
+            ev.append(Evidence("OpenAlex", "Retracted work by same author",
+                               f"{w['title'] or ''}"[:140] + (f" — {'; '.join(w['reasons'][:3])}" if w["reasons"] else ""),
+                               str(w.get("year") or ""), DOI.format(w["doi"]) if w.get("doi") else w.get("openalex"),
+                               "author:openalex id"))
     if strong or oa_hits:
         return CheckResult("1.3", Answer.YES,
                            " ".join(lines) + " Confirm that these are the same people and read the notices: a retraction "
-                           "for honest error may not warrant concern.", ev, needs_review=True)
+                           "for honest error may not warrant concern.", ev, needs_review=True,
+                           data={"triggers": triggers})
     if weak:
         return CheckResult("1.3", Answer.UNCLEAR,
-                           " ".join(lines) + " Matches are by name only (possible namesakes) or not integrity-related; "
-                           "verify.", ev, needs_review=True)
+                           " ".join(lines) + " Matches are by name only (possibly other people with the same name) "
+                           "or not integrity-related, so the study is not flagged.", ev, needs_review=False)
     checked = ", ".join(d.author_rw.keys())
     return CheckResult("1.3", Answer.NO,
                        f"No retractions or expressions of concern found for first/last author ({checked}). "
@@ -259,11 +298,4 @@ AUTOMATED: dict[str, Callable[[Study, Dossier, RWIndex], CheckResult]] = {
 
 
 def run_checks(s: Study, d: Dossier, rw: RWIndex) -> dict[str, CheckResult]:
-    out = {}
-    for c in CHECKS:
-        if c.id in AUTOMATED:
-            out[c.id] = AUTOMATED[c.id](s, d, rw)
-        else:
-            out[c.id] = CheckResult(c.id, Answer.NOT_ASSESSED, "Requires the full text: reviewer assessment.",
-                                    [], needs_review=False, automated=False)
-    return out
+    return {cid: fn(s, d, rw) for cid, fn in AUTOMATED.items()}

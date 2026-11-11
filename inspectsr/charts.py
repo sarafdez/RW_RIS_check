@@ -4,79 +4,14 @@ from __future__ import annotations
 import altair as alt
 import pandas as pd
 
-from .framework import DOMAIN_SHORT
-from .models import Judgement
-
-STATUS = {
-    Judgement.SERIOUS_CONCERNS.value: ("#d03b3b", "✕"),
-    Judgement.SOME_CONCERNS.value: ("#fab219", "!"),
-    Judgement.PENDING.value: ("#898781", "?"),
-    Judgement.NO_CONCERNS.value: ("#0ca30c", "✓"),
-    Judgement.NOT_ASSESSED.value: ("#d9d8d2", "–"),
-    "Incomplete": ("#d9d8d2", "–"),
-}
-STATUS_ORDER = [Judgement.SERIOUS_CONCERNS.value, Judgement.SOME_CONCERNS.value, Judgement.PENDING.value,
-                Judgement.NO_CONCERNS.value, Judgement.NOT_ASSESSED.value]
-STATUS_SCALE = alt.Scale(domain=STATUS_ORDER, range=[STATUS[k][0] for k in STATUS_ORDER])
 
 # categorical slots (validated reference palette), fixed order
 CAT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-SOURCE_COLORS = {"Retraction Watch": CAT[0], "Crossref": CAT[1], "PubMed": CAT[2], "OpenAlex": CAT[6]}
+SOURCE_COLORS = {"Retraction Watch": CAT[0], "Crossref (from RW)": "#86b6ef", "Crossref": CAT[1],
+                 "PubMed": CAT[2], "OpenAlex": CAT[6]}
 NOTICE_COLORS = {"Publication": "#898781", "Retraction": CAT[7], "Expression of concern": CAT[1],
                  "Correction": CAT[2], "Reinstatement": CAT[0]}
 INK_MUTED = "#898781"
-
-
-def icon(j: str) -> str:
-    return STATUS.get(j, ("#d9d8d2", "–"))[1]
-
-
-def _overall_base(label: str) -> str:
-    for k in STATUS_ORDER:
-        if label.startswith(k):
-            return k
-    return Judgement.NOT_ASSESSED.value
-
-
-def traffic_light(summary: pd.DataFrame) -> alt.Chart:
-    """robvis-style grid: one row per study, one column per domain + overall."""
-    cols = list(DOMAIN_SHORT.values())
-    long = summary.melt(id_vars=["ID", "Study", "Title"], value_vars=cols + ["Overall"],
-                        var_name="Domain", value_name="Label")
-    long["Judgement"] = long["Label"].map(_overall_base)
-    long["Icon"] = long["Judgement"].map(icon)
-    long["Row"] = long["ID"] + "  " + long["Study"]
-    order = cols + ["Overall"]
-    n = summary.shape[0]
-    base = alt.Chart(long).encode(
-        x=alt.X("Domain:N", sort=order, axis=alt.Axis(orient="top", labelAngle=0, title=None, domain=False, ticks=False)),
-        y=alt.Y("Row:N", sort=list(summary["ID"] + "  " + summary["Study"]),
-                axis=alt.Axis(title=None, domain=False, ticks=False, labelLimit=260, labelFontSize=12)),
-        tooltip=[alt.Tooltip("Study"), alt.Tooltip("Title"), alt.Tooltip("Domain"), alt.Tooltip("Label", title="Judgement")],
-    )
-    cells = base.mark_circle(size=420, opacity=1, stroke="white", strokeWidth=2).encode(
-        color=alt.Color("Judgement:N", scale=STATUS_SCALE,
-                        legend=alt.Legend(title=None, orient="bottom", columns=3, labelLimit=200)),
-    )
-    text = base.mark_text(fontSize=12, fontWeight="bold", color="white").encode(text="Icon:N")
-    return (cells + text).properties(height=alt.Step(30), width=alt.Step(90))
-
-
-def domain_summary(summary: pd.DataFrame) -> alt.Chart:
-    """Share of studies per judgement, per domain (robvis summary plot)."""
-    cols = list(DOMAIN_SHORT.values()) + ["Overall"]
-    long = summary.melt(id_vars=["ID"], value_vars=cols, var_name="Domain", value_name="Label")
-    long["Judgement"] = long["Label"].map(_overall_base)
-    agg = long.groupby(["Domain", "Judgement"]).size().reset_index(name="Studies")
-    agg["order"] = agg["Judgement"].map({k: i for i, k in enumerate(STATUS_ORDER)})
-    return alt.Chart(agg).mark_bar(stroke="white", strokeWidth=2).encode(
-        x=alt.X("Studies:Q", stack="normalize", axis=alt.Axis(format="%", title=None, grid=False)),
-        y=alt.Y("Domain:N", sort=cols, title=None),
-        color=alt.Color("Judgement:N", scale=STATUS_SCALE,
-                        legend=alt.Legend(title=None, orient="bottom", columns=3, labelLimit=200)),
-        order=alt.Order("order:Q"),
-        tooltip=["Domain", "Judgement", "Studies"],
-    ).properties(height=alt.Step(32), width="container")
 
 
 def funnel(steps: list[tuple[str, int]]) -> alt.Chart:
@@ -97,7 +32,7 @@ def source_agreement(evidence: pd.DataFrame) -> alt.Chart | None:
         return None
     g = ev.groupby(["ID", "Study", "Flag", "Source"]).size().reset_index(name="n")
     g["Row"] = g["ID"] + "  " + g["Study"] + " · " + g["Flag"]
-    sources = ["Retraction Watch", "Crossref", "PubMed", "OpenAlex"]
+    sources = ["Retraction Watch", "Crossref (from RW)", "Crossref", "PubMed", "OpenAlex"]
     base = alt.Chart(g).encode(
         x=alt.X("Source:N", sort=sources, axis=alt.Axis(orient="top", labelAngle=0, title=None, domain=False, ticks=False)),
         y=alt.Y("Row:N", title=None, axis=alt.Axis(domain=False, ticks=False, labelLimit=320)),
@@ -105,7 +40,7 @@ def source_agreement(evidence: pd.DataFrame) -> alt.Chart | None:
     )
     pts = base.mark_square(size=260).encode(color=alt.Color("Source:N", scale=alt.Scale(
         domain=sources, range=[SOURCE_COLORS[s] for s in sources]), legend=None))
-    txt = base.mark_text(color="white", fontSize=11, fontWeight="bold").encode(text="n:Q")
+    txt = base.mark_text(color="white", fontSize=11, fontWeight="bold").encode(text=alt.value("✓"))
     return (pts + txt).properties(height=alt.Step(30), width=alt.Step(110))
 
 
