@@ -172,8 +172,11 @@ def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progr
             except SourceError as e:
                 return s, [], str(e)
 
+        from .sources.http import blocked_message
         with ThreadPoolExecutor(max_workers=4) as ex:
             for i, (s, works, err) in enumerate(ex.map(_oa, rest)):
+                if blocked_message("api.openalex.org"):
+                    progress(1.0, "OpenAlex daily limit reached: skipping the remaining OpenAlex searches")
                 progress(i / len(rest), f"Searching OpenAlex for references not in PubMed ({i + 1}/{len(rest)})")
                 if err:
                     dossiers[s.uid].errors.append(f"OpenAlex title search failed: {err}")
@@ -382,13 +385,19 @@ def match_rw(studies: list[Study], dossiers: dict[str, Dossier], rw: RWIndex, pr
 
     if unmatched and rw.titles:
         progress(0.0, f"Fuzzy title matching for {len(unmatched)} studies")
-        queries = [normalize_title(s.title) for s in unmatched]
-        scores = process.cdist(queries, rw.titles, scorer=fuzz.token_sort_ratio,
-                               score_cutoff=FUZZY_CUTOFF, workers=-1, dtype=np.uint8)
+        # In chunks: a full matrix for 10,000 references x 74,000 titles would need ~700 MB.
+        best_of: dict[int, tuple[int, float]] = {}
+        CHUNK = 250
+        for start in range(0, len(unmatched), CHUNK):
+            part = unmatched[start:start + CHUNK]
+            progress(start / len(unmatched), f"Similar-title matching in Retraction Watch ({start}/{len(unmatched)})")
+            scores = process.cdist([normalize_title(s.title) for s in part], rw.titles, scorer=fuzz.token_sort_ratio,
+                                   score_cutoff=FUZZY_CUTOFF, workers=-1, dtype=np.uint8)
+            for j in range(len(part)):
+                b = int(scores[j].argmax())
+                best_of[start + j] = (b, float(scores[j][b]))
         for qi, s in enumerate(unmatched):
-            row = scores[qi]
-            best = int(row.argmax())
-            score = float(row[best])
+            best, score = best_of[qi]
             if score < FUZZY_CUTOFF:
                 continue
             for r in rw.by_title[rw.titles[best]]:

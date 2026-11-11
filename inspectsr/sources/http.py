@@ -40,6 +40,19 @@ class SourceError(RuntimeError):
     pass
 
 
+class LimitReached(SourceError):
+    """A source refused further requests for a long time (e.g. a daily quota). Not retried."""
+
+
+# host -> (blocked until, message). Once a daily quota is hit, later calls fail instantly instead of waiting.
+_blocked: dict[str, tuple[float, str]] = {}
+
+
+def blocked_message(host: str) -> str | None:
+    b = _blocked.get(host)
+    return b[1] if b and time.time() < b[0] else None
+
+
 def _db():
     os.makedirs(DATA_DIR, exist_ok=True)
     con = sqlite3.connect(CACHE_PATH, timeout=30, check_same_thread=False)
@@ -82,6 +95,8 @@ def get(url: str, params: Optional[dict] = None, *, as_json: bool = True, ttl: i
                 return None
             return json.loads(body) if as_json else body
         host = requests.utils.urlparse(key).hostname or ""
+        if (msg := blocked_message(host)):
+            raise LimitReached(msg)
         headers = {"User-Agent": USER_AGENT}
         last_err = None
         for attempt in range(retries):
@@ -103,6 +118,11 @@ def get(url: str, params: Optional[dict] = None, *, as_json: bool = True, ttl: i
                     wait = float(r.headers.get("Retry-After", 0))
                 except ValueError:
                     wait = 0
+                if r.status_code == 429 and wait > 120:  # a quota, not a short burst limit: stop asking
+                    msg = (f"{host}: daily request limit reached (resets in about {wait / 3600:.0f} h). "
+                           + ("Add a free API key to raise it." if "openalex" in host else ""))
+                    _blocked[host] = (time.time() + wait, msg)
+                    raise LimitReached(msg)
                 time.sleep(max(wait, 2.0 * (attempt + 1)))
                 continue
             if not r.ok:
