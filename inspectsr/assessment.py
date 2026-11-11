@@ -11,7 +11,8 @@ from . import __version__
 from .framework import CHECKS_BY_ID
 from .models import CheckResult, Study
 from .pipeline import RunInfo
-from .status import DECISIONS, Flag, Notice, group, identification_label, notices, study_status
+from .status import (DECISIONS, DEFAULT_REVIEW, NOT_SELECTED, NOT_YET, OUTCOMES, Flag, Notice, group,
+                     identification_label, notices, study_status)
 
 CHECK_LABELS = {"1.1": "Retraction", "1.2": "Expression of concern / correction",
                 "1.3": "Authors' other retractions", "2.2": "Trial registration"}
@@ -24,9 +25,15 @@ class Assessment:
     run: RunInfo
     settings: dict = field(default_factory=dict)
     decisions: dict = field(default_factory=dict)   # uid -> {"decision": one of DECISIONS, "note": str}
+    review_set: dict = field(default_factory=dict)  # uid -> bool: reviewer's choice of which flagged studies to review
+    # Flags depend only on the automated results, which never change after the run: cache them.
+    _raw: dict = field(default_factory=dict, repr=False)
+    _flagged: Optional[list] = field(default=None, repr=False)
 
     def study(self, uid: str) -> Study:
-        return next(s for s in self.studies if s.uid == uid)
+        if not getattr(self, "_by_uid", None):
+            self._by_uid = {s.uid: s for s in self.studies}
+        return self._by_uid[uid]
 
     def status(self, uid: str) -> tuple[str, list[Flag]]:
         return study_status(self.study(uid), self.results[uid], self.decisions.get(uid))
@@ -40,13 +47,67 @@ class Assessment:
     def flagged_uids(self) -> list[str]:
         """Studies with at least one flag, most severe first. A study stays in this list after the reviewer
         marks it as a false match, so review progress can be counted and the decision revisited."""
-        from .status import ORDER
-        raw = [(study_status(s, self.results[s.uid])[0], s.uid) for s in self.studies]
-        return [uid for st, uid in sorted(raw, key=lambda x: (ORDER[x[0]], x[1])) if group(st) != "none"]
+        if self._flagged is None:
+            from .status import ORDER
+            raw = [(self.raw_status(s.uid), s.uid) for s in self.studies]
+            self._flagged = [uid for st, uid in sorted(raw, key=lambda x: (ORDER[x[0]], x[1])) if group(st) != "none"]
+        return self._flagged
+
+    def raw_status(self, uid: str) -> str:
+        if uid not in self._raw:
+            self._raw[uid] = study_status(self.study(uid), self.results[uid])[0]
+        return self._raw[uid]
+
+    def selected(self, uid: str) -> bool:
+        """Is this flagged study in the reviewer's queue? Default: the serious findings."""
+        if uid in self.review_set:
+            return bool(self.review_set[uid])
+        return self.raw_status(uid) in DEFAULT_REVIEW
+
+    def review_queue(self) -> list[str]:
+        return [u for u in self.flagged_uids() if self.selected(u)]
 
     def review_progress(self) -> tuple[int, int]:
+        q = self.review_queue()
+        return sum(self.decision(u) != NOT_YET for u in q), len(q)
+
+    def final_decision(self, uid: str) -> str:
+        """What the export says: '' if nothing was flagged, 'Not reviewed (not selected)' if flagged but not chosen."""
+        if group(self.raw_status(uid)) == "none":
+            return ""
+        if not self.selected(uid):
+            return NOT_SELECTED
+        return self.decision(uid)
+
+    # ---- figures ------------------------------------------------------------------
+    def outcome_counts(self) -> pd.DataFrame:
         f = self.flagged_uids()
-        return sum(self.decision(u) != DECISIONS[0] for u in f), len(f)
+        counts = {o: 0 for o in OUTCOMES}
+        for u in f:
+            counts[self.final_decision(u)] += 1
+        return pd.DataFrame({"Outcome": list(counts), "Studies": list(counts.values())})
+
+    def notices_per_year(self) -> pd.DataFrame:
+        nt = self.notices_table()
+        nt = nt[~nt["Possible match only"] & nt["Date"].fillna("").str.match(r"^\d{4}")]
+        if nt.empty:
+            return pd.DataFrame(columns=["Year", "Notice", "Notices"])
+        nt = nt.assign(Year=nt["Date"].str[:4].astype(int))
+        return nt.groupby(["Year", "Notice"]).size().reset_index(name="Notices")
+
+    def studies_per_year(self) -> pd.DataFrame:
+        rows = []
+        for s in self.studies:
+            g = group(self.raw_status(s.uid))
+            label = {"retracted": "Retracted", "concern": "Other findings", "none": "No notices found"}[g]
+            if self.final_decision(s.uid).startswith("False match"):
+                label = "No notices found"
+            rows.append({"Year": s.year, "Finding": label})
+        df = pd.DataFrame(rows).dropna(subset=["Year"])
+        if df.empty:
+            return pd.DataFrame(columns=["Year", "Finding", "Studies"])
+        df["Year"] = df["Year"].astype(int)
+        return df.groupby(["Year", "Finding"]).size().reset_index(name="Studies")
 
     # ---- tables ------------------------------------------------------------------
     def summary_table(self) -> pd.DataFrame:
@@ -61,7 +122,8 @@ class Assessment:
                 "Notices": "; ".join(f"{n.type} {n.date[:10] if n.date else ''}".strip() for n in ns),
                 "Reasons (Retraction Watch)": "; ".join(dict.fromkeys(r for n in ns for r in n.reasons)),
                 "Sources": ", ".join(dict.fromkeys(x for n in ns for x in n.sources)),
-                "Reviewer decision": self.decision(s.uid),
+                "Selected for review": ("Yes" if self.selected(s.uid) else "No") if fl else "",
+                "Reviewer decision": self.final_decision(s.uid),
                 "Reviewer note": (self.decisions.get(s.uid) or {}).get("note", ""),
                 "DOI": s.doi, "PMID": s.pmid, "Identification": identification_label(s),
                 "Design (detected)": s.design, "Trial IDs": "; ".join(s.trial_ids),
@@ -82,7 +144,7 @@ class Assessment:
                              "Notice title": n.title, "In Retraction Watch": "Yes" if n.in_retraction_watch else "No",
                              "Reported by": n.sources_label, "Possible match only": n.possible,
                              "Reasons (Retraction Watch)": "; ".join(n.reasons), "Retraction Watch note": n.note,
-                             "Links": " ".join(n.links), "Reviewer decision": self.decision(s.uid),
+                             "Links": " ".join(n.links), "Reviewer decision": self.final_decision(s.uid),
                              "Reviewer note": dec.get("note", "")})
         return pd.DataFrame(rows, columns=["ID", "Study", "Notice", "Date", "Notice title", "In Retraction Watch",
                                            "Reported by", "Possible match only", "Reasons (Retraction Watch)",
@@ -119,7 +181,7 @@ class Assessment:
     def methods_text(self) -> str:
         n = len(self.studies)
         n_id = sum(s.identified for s in self.studies)
-        srcs = ", ".join(self.run.sources.keys())
+        srcs = ", ".join(k for k in self.run.sources if k != "Check type")
         return (
             f"On {self.run.finished}, the {n} included studies were checked for retractions and other post-publication "
             f"notices with the Retraction Watch check app (v{__version__}). The app identified {n_id}/{n} studies by DOI or "
@@ -146,6 +208,7 @@ class Assessment:
                    "Expression of concern": wb.add_format({"bg_color": "#f9d9cc"}),
                    "Correction": wb.add_format({"bg_color": "#fde8b4"}),
                    "No notices found": wb.add_format({"bg_color": "#c9ecc9"})}
+            self._overview_sheet(xw)
             for name, df in sheets.items():
                 df.to_excel(xw, sheet_name=name, index=False)
                 ws = xw.sheets[name]
@@ -158,6 +221,85 @@ class Assessment:
                     ws.conditional_format(1, 0, max(len(df), 1), len(df.columns) - 1,
                                           {"type": "cell", "criteria": "==", "value": f'"{val}"', "format": f})
         return buf.getvalue()
+
+
+    def _overview_sheet(self, xw):
+        """First sheet: key numbers and three native Excel charts."""
+        wb = xw.book
+        ws = wb.add_worksheet("Overview")
+        bold = wb.add_format({"bold": True})
+        title = wb.add_format({"bold": True, "font_size": 14})
+        ws.write(0, 0, "Retraction check: overview", title)
+        ws.write(1, 0, f"Run {self.run.finished} · {self.run.sources.get('Check type', '')}")
+        done, total = self.review_progress()
+        n_ret = sum(group(self.raw_status(s.uid)) == "retracted" for s in self.studies)
+        oc = self.outcome_counts().set_index("Outcome")["Studies"]
+        nums = [("Studies checked", len(self.studies)), ("Flagged (any finding)", len(self.flagged_uids())),
+                ("Retracted", n_ret), ("Selected for review", total), ("Reviewed", done),
+                ("Excluded", int(oc.get("Confirmed – exclude", 0))), ("Kept", int(oc.get("Confirmed – keep", 0))),
+                ("False matches", int(oc.get("False match – ignore", 0)))]
+        for i, (k, v) in enumerate(nums):
+            ws.write(3 + i, 0, k)
+            ws.write(3 + i, 1, v, bold)
+        ws.set_column(0, 0, 30)
+        ws.set_column(1, 8, 12)
+
+        def table(df: pd.DataFrame, row: int, col: int) -> tuple[int, int]:
+            for j, c in enumerate(df.columns):
+                ws.write(row, col + j, c, bold)
+            for i, r in enumerate(df.itertuples(index=False), 1):
+                for j, v in enumerate(r):
+                    ws.write(row + i, col + j, v if not isinstance(v, float) or v == v else "")
+            return row + len(df), col
+
+        # 1. review outcomes
+        r0 = 14
+        oc_df = self.outcome_counts()
+        ws.write(r0 - 1, 0, "Review of flagged studies", bold)
+        last, _ = table(oc_df, r0, 0)
+        ch = wb.add_chart({"type": "bar"})
+        ch.add_series({"name": "Studies", "categories": ["Overview", r0 + 1, 0, last, 0],
+                       "values": ["Overview", r0 + 1, 1, last, 1], "fill": {"color": "#2a78d6"},
+                       "data_labels": {"value": True}})
+        ch.set_title({"name": "Review of flagged studies"})
+        ch.set_legend({"none": True})
+        ch.set_y_axis({"reverse": True})
+        ws.insert_chart(r0 - 1, 4, ch, {"x_scale": 1.3, "y_scale": 1.0})
+
+        # 2. notices per year (pivot: one column per notice type)
+        r1 = last + 18
+        npy = self.notices_per_year()
+        ws.write(r1 - 1, 0, "Notices per year", bold)
+        if not npy.empty:
+            piv = npy.pivot(index="Year", columns="Notice", values="Notices").fillna(0).astype(int).reset_index()
+            last1, _ = table(piv, r1, 0)
+            ch = wb.add_chart({"type": "column", "subtype": "stacked"})
+            colors = {"Retraction": "#e34948", "Expression of concern": "#eb6834", "Correction": "#1baf7a",
+                      "Reinstatement": "#2a78d6"}
+            for j, c in enumerate(piv.columns[1:], 1):
+                ch.add_series({"name": ["Overview", r1, j], "categories": ["Overview", r1 + 1, 0, last1, 0],
+                               "values": ["Overview", r1 + 1, j, last1, j], "fill": {"color": colors.get(c, "#898781")}})
+            ch.set_title({"name": "Notices per year (included studies)"})
+            ws.insert_chart(r1 - 1, 6, ch, {"x_scale": 1.3})
+            r2 = max(last1, r1 + 15) + 3
+        else:
+            ws.write(r1, 0, "No notices found.")
+            r2 = r1 + 4
+
+        # 3. included studies by publication year and finding
+        spy = self.studies_per_year()
+        ws.write(r2 - 1, 0, "Included studies by publication year", bold)
+        if not spy.empty:
+            order = [c for c in ["Retracted", "Other findings", "No notices found"] if c in set(spy["Finding"])]
+            piv = spy.pivot(index="Year", columns="Finding", values="Studies").fillna(0).astype(int)[order].reset_index()
+            last2, _ = table(piv, r2, 0)
+            ch = wb.add_chart({"type": "column", "subtype": "stacked"})
+            colors = {"Retracted": "#d03b3b", "Other findings": "#fab219", "No notices found": "#0ca30c"}
+            for j, c in enumerate(piv.columns[1:], 1):
+                ch.add_series({"name": ["Overview", r2, j], "categories": ["Overview", r2 + 1, 0, last2, 0],
+                               "values": ["Overview", r2 + 1, j, last2, j], "fill": {"color": colors[c]}})
+            ch.set_title({"name": "Included studies by publication year"})
+            ws.insert_chart(r2 - 1, 6, ch, {"x_scale": 1.3})
 
 
 def build(studies: list[Study], dossiers: dict, run: RunInfo, rw, settings: Optional[dict] = None) -> Assessment:

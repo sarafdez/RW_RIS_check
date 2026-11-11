@@ -15,12 +15,12 @@ from inspectsr.assessment import CHECK_LABELS, Assessment, build
 from inspectsr.models import Answer, Study
 from inspectsr.sources import retraction_watch as rwmod
 from inspectsr.sources.registries import registry_url
-from inspectsr.status import DECISIONS, STATUS_INFO, group
+from inspectsr.status import DECISIONS, NOT_SELECTED, NOT_YET, STATUS_INFO, group
 
 st.set_page_config(page_title="Retraction Watch check", page_icon="🔎", layout="wide")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Notices", "5 · Export",
+PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Notices", "5 · Final overview & export",
          "Explore Retraction Watch"]
 
 st.markdown("""
@@ -371,6 +371,13 @@ def _notices_df(ns) -> pd.DataFrame:
                           "Notice link": n.links[0] if n.links else None} for n in ns])
 
 
+def _cb_select_all(value: bool):
+    a = ss.assessment
+    for u in a.flagged_uids():
+        a.review_set[u] = value
+    ss["queue_round"] = ss.get("queue_round", 0) + 1  # fresh editor so it shows the new ticks
+
+
 def _cb_decision(uid: str):
     a = ss.assessment
     a.decisions[uid] = {"decision": ss.get(f"dec|{uid}") or DECISIONS[0], "note": ss.get(f"note|{uid}") or ""}
@@ -383,23 +390,47 @@ def page_flagged():
     st.title("Flagged studies")
     summ = a.summary_table().set_index("ID")
     flagged = a.flagged_uids()
+    if not flagged:
+        st.success("No flagged studies: nothing to review.")
+        return
+    bar = st.empty()
+
+    with st.expander(f"Choose which flagged studies to review ({len(a.review_queue())} of {len(flagged)} selected)",
+                     expanded=False):
+        st.caption("Ticked studies are in your review queue and counted in the progress bar. Unticked ones appear "
+                   "as “Not reviewed (not selected)” in the export. By default retractions, expressions of concern "
+                   "and possible matches are ticked.")
+        b1, b2, _ = st.columns([1, 1, 4])
+        b1.button("Select all", on_click=_cb_select_all, args=(True,), width="stretch")
+        b2.button("Select none", on_click=_cb_select_all, args=(False,), width="stretch")
+        q = pd.DataFrame([{"Review?": a.selected(u), "ID": u, "Status": a.raw_status(u),
+                           "Study": summ.loc[u, "Study"], "Why": summ.loc[u, "Why"],
+                           "Decision": a.decision(u)} for u in flagged])
+        edited = st.data_editor(q, hide_index=True, width="stretch", key=f"queue_{ss.get('queue_round', 0)}",
+                                disabled=["ID", "Status", "Study", "Why", "Decision"],
+                                column_config={"Review?": st.column_config.CheckboxColumn(width="small"),
+                                               "Why": st.column_config.TextColumn(width="large")})
+        for _, r in edited.iterrows():
+            a.review_set[r["ID"]] = bool(r["Review?"])
+
     done, total = a.review_progress()
     if total:
-        st.progress(done / total, text=f"**Reviewed {done} of {total} flagged studies**"
-                                       + (" · all done ✓" if done == total else ""))
-    show_all = st.toggle("Show all studies (not only flagged)", value=False)
-    opts = list(summ.index) if show_all else flagged
+        bar.progress(done / total, text=f"**Reviewed {done} of {total} studies selected for review**"
+                                        + (" · all done ✓" if done == total else ""))
+    else:
+        bar.info("No studies selected for review. Open “Choose which flagged studies to review” below.")
+
+    show = st.radio("Show", ["To review", "All flagged", "All studies"], horizontal=True, label_visibility="collapsed")
+    opts = {"To review": a.review_queue(), "All flagged": flagged, "All studies": list(summ.index)}[show] or flagged
     if "_study" in ss and ss["_study"] not in opts:
         opts = [ss["_study"]] + opts
-    if not opts:
-        st.success("No flagged studies. Use the toggle above to browse all studies.")
-        return
     if "_study" in ss:
         ss.study_sel = ss.pop("_study")
     if ss.get("study_sel") not in opts:
         ss.study_sel = opts[0]
     i = opts.index(ss.study_sel)
-    unreviewed = [u for u in opts[i + 1:] + opts[:i] if u in flagged and a.decision(u) == DECISIONS[0]]
+    queue = set(a.review_queue())
+    unreviewed = [u for u in opts[i + 1:] + opts[:i] if u in queue and a.decision(u) == NOT_YET]
     c1, c2, c3, c4 = st.columns([1, 5, 1, 1.4])
     if c1.button("← Previous", disabled=i == 0, width="stretch"):
         ss.study_sel = opts[i - 1]
@@ -412,10 +443,8 @@ def page_flagged():
         st.rerun()
 
     def _label(u):
-        dec = a.decision(u)
-        mark = {"Confirmed": "✓ ", "False match – ignore": "✓ (false match) "}.get(dec, "○ ")
-        return (f"{mark}{STATUS_INFO[summ.loc[u, 'Status']][2]} {summ.loc[u, 'Status']} · "
-                f"{summ.loc[u, 'Study']} · {(summ.loc[u, 'Title'] or '')[:70]}")
+        st_ = a.raw_status(u)
+        return f"{STATUS_INFO[st_][2]} {st_} · {summ.loc[u, 'Study']} · {(summ.loc[u, 'Title'] or '')[:70]}"
 
     c2.selectbox("Study", opts, key="study_sel", label_visibility="collapsed", format_func=_label)
     uid = ss.study_sel
@@ -428,7 +457,11 @@ def page_flagged():
     st.markdown(f"<span class='muted'>{meta}</span>", unsafe_allow_html=True)
     st.markdown(_links(s))
 
-    st.markdown(status_badge(status), unsafe_allow_html=True)
+    dec = a.final_decision(uid)
+    dec_badge = "" if not dec else badge(
+        ("○ " if dec in (NOT_YET, NOT_SELECTED) else "✓ ") + dec,
+        {"Confirmed – exclude": "#d03b3b", "Confirmed – keep": "#fab219", "False match – ignore": "#0ca30c"}.get(dec, "#c3c2b7"))
+    st.markdown(status_badge(a.raw_status(uid)) + " " + dec_badge, unsafe_allow_html=True)
     for f in fl:
         st.markdown(f"- **{f.status}:** {f.why}")
     if not fl:
@@ -450,9 +483,10 @@ def page_flagged():
         cur = a.decisions.get(uid, {})
         d1.radio("Your decision", DECISIONS, index=DECISIONS.index(cur.get("decision", DECISIONS[0])),
                  key=f"dec|{uid}", on_change=_cb_decision, args=(uid,), label_visibility="collapsed",
-                 help="'False match' removes the flags for this study (e.g. a different paper with a similar title).")
+                 help="Exclude/keep: the finding is real and you decided what to do with the study. "
+                      "False match: a different paper (e.g. similar title); the flags are ignored.")
         d2.text_area("Note", value=cur.get("note", ""), key=f"note|{uid}", on_change=_cb_decision, args=(uid,),
-                     placeholder="e.g. Retracted 2018 for data fabrication; excluded from the analysis", height=100,
+                     placeholder="e.g. Retracted in 2018 for data fabrication: excluded from the meta-analysis", height=100,
                      label_visibility="collapsed")
         st.caption("Saved automatically when you click outside the box. Your decision and note are included in the "
                    "Excel export (Summary and Notices sheets).")
@@ -618,21 +652,80 @@ def page_export():
     a = need_assessment()
     if not a:
         return
-    st.title("Export")
-    st.markdown("The Excel workbook has one sheet per table: **Summary** (one row per study, with status, why and "
-                "your decisions), **Notices** (merged across sources), **Checks**, **Evidence** (every record from "
-                "every source), **Provenance** (database versions and query dates) and a draft **Methods text**.")
-    c1, c2 = st.columns(2)
+    import altair as alt
+    st.title("Final overview & export")
+    done, total = a.review_progress()
+    oc = a.outcome_counts().set_index("Outcome")["Studies"]
+    n_ret = sum(group(a.raw_status(s.uid)) == "retracted" for s in a.studies)
+    n_notices = int(a.notices_per_year()["Notices"].sum()) if not a.notices_per_year().empty else 0
+    k = st.columns(6)
+    k[0].metric("Studies checked", len(a.studies))
+    k[1].metric("Flagged", len(a.flagged_uids()))
+    k[2].metric("Retracted", n_ret)
+    k[3].metric("Notices", n_notices, help="Retractions, expressions of concern and corrections, merged across sources.")
+    k[4].metric("Reviewed", f"{done}/{total}", help="Of the studies you selected for review.")
+    k[5].metric("Excluded", int(oc.get("Confirmed – exclude", 0)))
+    if total and done < total:
+        st.warning(f"{total - done} selected study(ies) are not reviewed yet. They will be exported as “Not yet reviewed”.")
+
+    c1, c2 = st.columns(2, gap="large")
+    with c1:
+        st.markdown("#### Review of flagged studies")
+        ocd = a.outcome_counts()
+        ocd = ocd[ocd["Studies"] > 0]
+        colors = {"Confirmed – exclude": "#d03b3b", "Confirmed – keep": "#fab219", "False match – ignore": "#0ca30c",
+                  "Not yet reviewed": "#898781", "Not reviewed (not selected)": "#d9d8d2"}
+        bars = alt.Chart(ocd).mark_bar(cornerRadiusEnd=4).encode(
+            x=alt.X("Studies:Q", title=None, axis=alt.Axis(tickMinStep=1, grid=False)),
+            y=alt.Y("Outcome:N", sort=list(colors), title=None, axis=alt.Axis(labelLimit=240)),
+            color=alt.Color("Outcome:N", scale=alt.Scale(domain=list(colors), range=list(colors.values())), legend=None),
+            tooltip=["Outcome", "Studies"])
+        st.altair_chart((bars + bars.mark_text(align="left", dx=4, color="#898781").encode(text="Studies:Q"))
+                        .properties(height=alt.Step(30), width="container"), width="stretch")
+    with c2:
+        st.markdown("#### Notices per year")
+        npy = a.notices_per_year()
+        if npy.empty:
+            st.caption("No notices found.")
+        else:
+            types = [t for t in explore.NATURES if t in set(npy["Notice"])]
+            ch = alt.Chart(npy).mark_bar(stroke="white", strokeWidth=1).encode(
+                x=alt.X("Year:O", title=None, axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("Notices:Q", title=None, axis=alt.Axis(tickMinStep=1)),
+                color=alt.Color("Notice:N", scale=alt.Scale(domain=types, range=[explore.NATURE_COLORS[t] for t in types]),
+                                legend=alt.Legend(title=None, orient="bottom")),
+                tooltip=["Year", "Notice", "Notices"]).properties(height=240, width="container")
+            st.altair_chart(ch, width="stretch")
+
+    st.markdown("#### Included studies by publication year")
+    spy = a.studies_per_year()
+    if not spy.empty:
+        order = ["Retracted", "Other findings", "No notices found"]
+        ch = alt.Chart(spy).mark_bar(stroke="white", strokeWidth=1).encode(
+            x=alt.X("Year:O", title=None, axis=alt.Axis(labelAngle=0, labelOverlap=True)),
+            y=alt.Y("Studies:Q", title=None, axis=alt.Axis(tickMinStep=1)),
+            color=alt.Color("Finding:N", scale=alt.Scale(domain=order, range=["#d03b3b", "#fab219", "#0ca30c"]),
+                            legend=alt.Legend(title=None, orient="bottom")),
+            order=alt.Order("Finding:N"),
+            tooltip=["Year", "Finding", "Studies"]).properties(height=240, width="container")
+        st.altair_chart(ch, width="stretch")
+
+    st.markdown("#### Download")
+    st.markdown("The Excel workbook starts with an **Overview** sheet (these numbers and charts), followed by "
+                "**Summary** (one row per study: status, why, whether you selected it for review, your decision and "
+                "note), **Notices**, **Checks**, **Evidence** (every record from every source), **Provenance** and a "
+                "draft **Methods text**.")
+    d1, d2 = st.columns(2)
     stamp = date.today().isoformat()
-    c1.download_button("⬇ Excel workbook", a.to_excel(), f"retraction-check_{stamp}.xlsx",
+    d1.download_button("⬇ Excel workbook", a.to_excel(), f"retraction-check_{stamp}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary",
                        width="stretch")
-    c2.download_button("⬇ Summary (CSV)", a.summary_table().drop(columns=["Group"]).to_csv(index=False),
+    d2.download_button("⬇ Summary (CSV)", a.summary_table().drop(columns=["Group"]).to_csv(index=False),
                        f"retraction-check_summary_{stamp}.csv", mime="text/csv", width="stretch")
     st.markdown("#### Draft methods text")
     st.code(a.methods_text(), language=None, wrap_lines=True)
-    st.markdown("#### Provenance")
-    st.dataframe(a.provenance_table(), hide_index=True, width="stretch")
+    with st.expander("Provenance (database versions and query dates)"):
+        st.dataframe(a.provenance_table(), hide_index=True, width="stretch")
     if a.run.errors:
         st.warning("Some sources returned errors during the run; affected checks may be incomplete. Re-run later.")
 

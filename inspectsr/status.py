@@ -28,7 +28,15 @@ STATUS_INFO = {s[0]: s for s in STATUSES}
 ORDER = {s[0]: i for i, s in enumerate(STATUSES)}
 NONE = "No notices found"
 
-DECISIONS = ["Not yet reviewed", "Confirmed", "False match – ignore"]
+NOT_YET = "Not yet reviewed"
+EXCLUDE = "Confirmed – exclude"
+KEEP = "Confirmed – keep"
+FALSE_MATCH = "False match – ignore"
+NOT_SELECTED = "Not reviewed (not selected)"
+DECISIONS = [NOT_YET, EXCLUDE, KEEP, FALSE_MATCH]
+OUTCOMES = [EXCLUDE, KEEP, FALSE_MATCH, NOT_YET, NOT_SELECTED]
+# Flagged studies with these statuses are put in the review queue by default; the reviewer can change it.
+DEFAULT_REVIEW = {"Retracted", "Retracted and replaced", "Expression of concern", "Possible match", "Not a study record"}
 
 
 @dataclass
@@ -187,7 +195,7 @@ def flags(s: Study, results: dict[str, CheckResult]) -> list[Flag]:
 
 def study_status(s: Study, results: dict[str, CheckResult], decision: Optional[dict] = None) -> tuple[str, list[Flag]]:
     fl = flags(s, results)
-    if decision and decision.get("decision") == DECISIONS[2]:
+    if decision and decision.get("decision") == FALSE_MATCH:
         return NONE, fl
     return (fl[0].status if fl else NONE), fl
 
