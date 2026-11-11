@@ -89,6 +89,9 @@ with st.sidebar:
     if a:
         st.divider()
         st.markdown(f"**Current check:** {len(a.studies)} studies")
+        done, total = a.review_progress()
+        if total:
+            st.progress(done / total, text=f"Reviewed {done} of {total} flagged")
         st.caption(f"Run {a.run.finished}")
 
 
@@ -379,8 +382,13 @@ def page_flagged():
         return
     st.title("Flagged studies")
     summ = a.summary_table().set_index("ID")
+    flagged = a.flagged_uids()
+    done, total = a.review_progress()
+    if total:
+        st.progress(done / total, text=f"**Reviewed {done} of {total} flagged studies**"
+                                       + (" · all done ✓" if done == total else ""))
     show_all = st.toggle("Show all studies (not only flagged)", value=False)
-    opts = list(summ.index) if show_all else list(summ.index[summ["Group"] != "none"])
+    opts = list(summ.index) if show_all else flagged
     if "_study" in ss and ss["_study"] not in opts:
         opts = [ss["_study"]] + opts
     if not opts:
@@ -391,16 +399,25 @@ def page_flagged():
     if ss.get("study_sel") not in opts:
         ss.study_sel = opts[0]
     i = opts.index(ss.study_sel)
-    c1, c2, c3 = st.columns([1, 6, 1])
+    unreviewed = [u for u in opts[i + 1:] + opts[:i] if u in flagged and a.decision(u) == DECISIONS[0]]
+    c1, c2, c3, c4 = st.columns([1, 5, 1, 1.4])
     if c1.button("← Previous", disabled=i == 0, width="stretch"):
         ss.study_sel = opts[i - 1]
         st.rerun()
     if c3.button("Next →", disabled=i == len(opts) - 1, width="stretch"):
         ss.study_sel = opts[i + 1]
         st.rerun()
-    c2.selectbox("Study", opts, key="study_sel", label_visibility="collapsed",
-                 format_func=lambda u: f"{STATUS_INFO[summ.loc[u, 'Status']][2]} {summ.loc[u, 'Status']} · "
-                                       f"{summ.loc[u, 'Study']} · {(summ.loc[u, 'Title'] or '')[:80]}")
+    if c4.button("Next unreviewed →", disabled=not unreviewed, width="stretch", type="primary"):
+        ss.study_sel = unreviewed[0]
+        st.rerun()
+
+    def _label(u):
+        dec = a.decision(u)
+        mark = {"Confirmed": "✓ ", "False match – ignore": "✓ (false match) "}.get(dec, "○ ")
+        return (f"{mark}{STATUS_INFO[summ.loc[u, 'Status']][2]} {summ.loc[u, 'Status']} · "
+                f"{summ.loc[u, 'Study']} · {(summ.loc[u, 'Title'] or '')[:70]}")
+
+    c2.selectbox("Study", opts, key="study_sel", label_visibility="collapsed", format_func=_label)
     uid = ss.study_sel
     s = a.study(uid)
     status, fl = a.status(uid)

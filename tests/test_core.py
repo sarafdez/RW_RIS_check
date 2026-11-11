@@ -246,6 +246,8 @@ def test_false_match_decision_clears_status_and_excel_exports():
     a.decisions[s.uid] = {"decision": "False match – ignore", "note": "different paper"}
     assert a.status(s.uid)[0] == "No notices found"
     assert a.summary_table().iloc[0]["Reviewer note"] == "different paper"
+    # still counted as a flagged study that has been reviewed
+    assert a.flagged_uids() == [s.uid] and a.review_progress() == (1, 1)
     assert len(a.to_excel()) > 1000
 
 

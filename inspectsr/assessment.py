@@ -37,6 +37,17 @@ class Assessment:
     def decision(self, uid: str) -> str:
         return (self.decisions.get(uid) or {}).get("decision") or DECISIONS[0]
 
+    def flagged_uids(self) -> list[str]:
+        """Studies with at least one flag, most severe first. A study stays in this list after the reviewer
+        marks it as a false match, so review progress can be counted and the decision revisited."""
+        from .status import ORDER
+        raw = [(study_status(s, self.results[s.uid])[0], s.uid) for s in self.studies]
+        return [uid for st, uid in sorted(raw, key=lambda x: (ORDER[x[0]], x[1])) if group(st) != "none"]
+
+    def review_progress(self) -> tuple[int, int]:
+        f = self.flagged_uids()
+        return sum(self.decision(u) != DECISIONS[0] for u in f), len(f)
+
     # ---- tables ------------------------------------------------------------------
     def summary_table(self) -> pd.DataFrame:
         rows = []
