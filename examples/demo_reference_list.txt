@@ -1,0 +1,6 @@
+Included studies
+
+1. Horby P, Lim WS, Emberson JR, Mafham M, Bell JL, Linsell L, et al. Dexamethasone in Hospitalized Patients with Covid-19. N Engl J Med. 2021;384(8):693-704. doi:10.1056/NEJMoa2021436
+2. Monticone M, Ambrosini E, Ferrante S, Colombo R. 'Regent Suit' training improves recovery of motor and daily living activities in subjects with subacute stroke: a randomized controlled trial. Clin Rehabil. 2013;27(9):792-802.
+3. Wolfe GI, Kaminski HJ, Aban IB, Minisman G, Kuo HC, Marx A, et al. Randomized Trial of Thymectomy in Myasthenia Gravis. N Engl J Med. 2016;375(6):511-22.
+4. PMID: 30879366

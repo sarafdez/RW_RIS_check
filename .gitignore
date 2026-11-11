@@ -1,0 +1,6 @@
+# Downloaded data and API cache (re-created automatically)
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

@@ -1,7 +1,11 @@
-pandas
-rispy
-rapidfuzz
-requests
-streamlit>=1.32
+streamlit>=1.50
+pandas>=2.0
+numpy
 altair>=5
-python-dateutil
+rispy>=0.7
+rapidfuzz>=3.0
+requests
+xlsxwriter
+openpyxl
+pypdf
+pytest
