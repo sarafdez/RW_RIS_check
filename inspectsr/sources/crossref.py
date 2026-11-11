@@ -28,6 +28,23 @@ def work(doi: str) -> Optional[dict]:
     return data.get("message") if data else None
 
 
+def works_by_doi(dois: list[str], chunk: int = 40) -> dict[str, dict]:
+    """Batch look-up: many DOIs per request (Crossref ORs repeated doi: filters)."""
+    out: dict[str, dict] = {}
+    dois = sorted({d for d in dois if d and "," not in d})
+    for i in range(0, len(dois), chunk):
+        part = dois[i:i + chunk]
+        data = get(f"{API}/works", _params({
+            "filter": ",".join(f"doi:{d}" for d in part), "rows": len(part) + 10,
+            "select": "DOI,title,author,issued,container-title,type,updated-by,update-to",
+        }))
+        for it in (data or {}).get("message", {}).get("items", []):
+            d = normalize_doi(it.get("DOI"))
+            if d:
+                out[d] = it
+    return out
+
+
 def match_citation(query: str, rows: int = 5) -> list[dict]:
     data = get(f"{API}/works", _params({
         "query.bibliographic": query[:1000], "rows": rows,

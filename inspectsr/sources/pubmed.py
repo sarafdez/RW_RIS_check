@@ -6,7 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Iterable
 
-from ..normalize import find_trial_ids, find_year, normalize_doi
+from ..normalize import find_trial_ids, find_year, normalize_doi, normalize_title
 from .http import get
 
 EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -39,6 +39,39 @@ def pmids_for_dois(dois: list[str]) -> list[str]:
                                                "retmode": "json", "retmax": 500})
         out += (data or {}).get("esearchresult", {}).get("idlist", [])
     return out
+
+
+# PubMed's own stopword list: a stopword with a [ti] tag matches nothing, which makes the whole AND fail.
+_STOP = set("""a about again all almost also although always among an and another any are as at be because been before
+being between both but by can could did do does done due during each either enough especially etc for found from
+further had has have having here how however i if in into is it its itself just kg km made mainly make may mg might ml
+mm most mostly must nearly neither no nor obtained of often on our overall perhaps pmid quite rather really regarding
+seem seen several should show showed shown shows significantly since so some such than that the their theirs them then
+there therefore these they this those through thus to upon use used using various very was we were what when which
+while with within without would versus vs""".split())
+
+
+def _title_term(title: str) -> str | None:
+    words = [w for w in (normalize_title(title) or "").split() if w not in _STOP and len(w) > 2 and not w.isdigit()]
+    words = sorted(set(words), key=len, reverse=True)[:7]
+    if len(words) < 3:
+        return None
+    return "(" + " AND ".join(f"{w}[ti]" for w in words) + ")"
+
+
+def search_titles(titles: list[str], batch: int = 10) -> dict[str, dict]:
+    """Find PubMed records for many titles with few requests.
+
+    Each title becomes (word1[ti] AND word2[ti] ...) using its most distinctive words; ~10 titles are ORed per
+    search. Returns {pmid: record}; the caller decides which record belongs to which title.
+    """
+    terms = [t for t in (_title_term(x) for x in titles) if t]
+    pmids: list[str] = []
+    for chunk in _chunks(terms, batch):
+        data = get(f"{EUTILS}/esearch.fcgi", {**_base(), "db": "pubmed", "term": " OR ".join(chunk),
+                                               "retmode": "json", "retmax": 500})
+        pmids += (data or {}).get("esearchresult", {}).get("idlist", [])
+    return fetch(pmids) if pmids else {}
 
 
 def fetch(pmids: list[str]) -> dict[str, dict]:

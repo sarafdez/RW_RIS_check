@@ -240,3 +240,34 @@ def test_reviewer_override_and_json_roundtrip():
     b = Assessment.from_json(a.to_json())
     assert b.reviewer == a.reviewer and b.results[s.uid]["1.1"].proposed == Answer.YES
     assert len(b.to_excel()) > 1000
+
+
+# ---- identification helpers --------------------------------------------------------
+def test_pubmed_title_term_drops_pubmed_stopwords():
+    from inspectsr.sources.pubmed import _title_term
+    t = _title_term("Latent Inhibition Reduces Nocebo Nausea, Even Without Deception")
+    assert "without[ti]" not in t and "deception[ti]" in t
+
+
+def test_accept_pubmed_requires_similar_title_and_year():
+    from inspectsr.pipeline import _accept_pubmed
+    s = Study("", title="Randomized Trial of Thymectomy in Myasthenia Gravis", year=2016)
+    recs = [{"title": "Retraction: Randomized Trial of Thymectomy in Myasthenia Gravis", "year": 2016},
+            {"title": "Randomized trial of thymectomy in myasthenia gravis.", "year": 2016, "pmid": "1"},
+            {"title": "Something else entirely about gravis", "year": 2016, "pmid": "2"}]
+    hit = _accept_pubmed(s, recs)
+    assert hit and hit[0]["pmid"] == "1" and hit[1] == "high"
+    assert _accept_pubmed(Study("", title=s.title, year=2005), recs[1:]) is None
+
+
+def test_identify_from_retraction_watch_first_pass():
+    from inspectsr.pipeline import identify_from_rw
+    s = Study("", title="Effect of drug X on outcome Y: a randomised trial", authors=["Smith, John"], year=2019)
+    identify_from_rw([s], _rw())
+    assert s.doi == "10.1234/abc.2019.1" and s.id_method == "Retraction Watch title match"
+
+
+def test_ris_doi_in_unusual_field():
+    ris = "TY  - JOUR\nTI  - A trial of something important here\nM3  - doi: 10.5555/abc.123\nER  - \n"
+    s = inputs.parse_upload("x.ris", ris.encode())[0][0]
+    assert s.doi == "10.5555/abc.123"

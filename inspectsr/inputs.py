@@ -83,12 +83,20 @@ def finalize(study: Study) -> Study:
 
 # ---- RIS ---------------------------------------------------------------------
 
+def _flatten(v) -> str:
+    if isinstance(v, dict):
+        return " ".join(_flatten(x) for x in v.values())
+    if isinstance(v, (list, tuple)):
+        return " ".join(_flatten(x) for x in v)
+    return "" if v is None else str(v)
+
+
 def parse_ris(text: str, name: str) -> list[Study]:
     # rispy needs records to start with TY; strip junk before first TY and normalise line endings
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     i = text.find("TY  -")
     text = text[i:] if i >= 0 else text
-    records = rispy.loads(text, skip_unknown_tags=True, enforce_list_tags=False)
+    records = rispy.loads(text, skip_unknown_tags=False, enforce_list_tags=False)
     out = []
     for r in records:
         authors = r.get("authors") or r.get("first_authors") or []
@@ -103,9 +111,14 @@ def parse_ris(text: str, name: str) -> list[Study]:
         an = _first(r.get("accession_number"))
         if an and re.fullmatch(r"\d{5,9}", str(an).strip()):
             pmid = str(an).strip()
+        # every field except the abstract (which may cite other papers' DOIs), incl. unknown tags
+        blob = " ".join(_flatten(v) for k, v in r.items() if k not in ("abstract", "notes_abstract"))
+        if not pmid:
+            m = re.search(r"\bPMID[:\s]*(\d{5,9})\b|pubmed[^\s]*?/(\d{5,9})", blob, re.I)
+            pmid = (m.group(1) or m.group(2)) if m else None
         s = Study(
             uid="",
-            raw=" ".join(filter(None, [title, notes, urls])),
+            raw=" ".join(filter(None, [title, notes, urls, blob if not normalize_doi(_first(r.get("doi"))) else ""])),
             source_file=name, source_format="RIS",
             title=title,
             authors=list(authors),

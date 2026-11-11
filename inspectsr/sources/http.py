@@ -29,7 +29,8 @@ _last_call: dict[str, float] = {}
 # minimum seconds between calls per host
 _MIN_INTERVAL = {
     "eutils.ncbi.nlm.nih.gov": 0.11 if os.environ.get("NCBI_API_KEY") else 0.36,
-    "api.crossref.org": 0.05,
+    # Crossref public pool (2025+): 1 request/second, 1 concurrent. Polite pool (mailto set) allows more.
+    "api.crossref.org": 0.12 if os.environ.get("CROSSREF_MAILTO") else 1.05,
     "api.openalex.org": 0.1,
     "clinicaltrials.gov": 0.1,
 }
@@ -44,6 +45,18 @@ def _db():
     con = sqlite3.connect(CACHE_PATH, timeout=30, check_same_thread=False)
     con.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, fetched REAL, body TEXT)")
     return con
+
+
+# Maximum simultaneous requests per host (others wait their turn instead of being rejected).
+_CONCURRENCY = {"api.crossref.org": 3 if os.environ.get("CROSSREF_MAILTO") else 1, "eutils.ncbi.nlm.nih.gov": 1}
+_host_sem: dict[str, threading.Semaphore] = {}
+
+
+def _sem(host: str) -> threading.Semaphore:
+    with _lock:
+        if host not in _host_sem:
+            _host_sem[host] = threading.Semaphore(_CONCURRENCY.get(host, 4))
+        return _host_sem[host]
 
 
 def _throttle(host: str):
@@ -72,9 +85,10 @@ def get(url: str, params: Optional[dict] = None, *, as_json: bool = True, ttl: i
         headers = {"User-Agent": USER_AGENT}
         last_err = None
         for attempt in range(retries):
-            _throttle(host)
             try:
-                r = requests.get(key, headers=headers, timeout=timeout)
+                with _sem(host):
+                    _throttle(host)
+                    r = requests.get(key, headers=headers, timeout=timeout)
             except requests.RequestException as e:
                 last_err = e
                 time.sleep(1.5 * (attempt + 1))
@@ -85,7 +99,11 @@ def get(url: str, params: Optional[dict] = None, *, as_json: bool = True, ttl: i
                 return None
             if r.status_code in (429, 500, 502, 503, 504):
                 last_err = SourceError(f"{host} returned {r.status_code}")
-                time.sleep(2.0 * (attempt + 1))
+                try:
+                    wait = float(r.headers.get("Retry-After", 0))
+                except ValueError:
+                    wait = 0
+                time.sleep(max(wait, 2.0 * (attempt + 1)))
                 continue
             if not r.ok:
                 raise SourceError(f"{host} returned {r.status_code}")

@@ -5,6 +5,7 @@ that each proposed INSPECT-SR answer can be traced back to its evidence.
 """
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -97,18 +98,67 @@ def _accept_crossref(study: Study, items: list[dict]) -> Optional[tuple[dict, st
     return None
 
 
+def _accept_pubmed(study: Study, records: list[dict]) -> Optional[tuple[dict, str, float]]:
+    """Pick the PubMed record that matches the study's title (and year), or None."""
+    best, best_sim = None, 0.0
+    for rec in records:
+        if not rec.get("title") or (is_notice_title(rec["title"]) and not is_notice_title(study.title)):
+            continue
+        sim = _title_sim(study.title, rec["title"])
+        year_ok = not study.year or not rec.get("year") or abs(int(rec["year"]) - int(study.year)) <= 1
+        if year_ok and sim > best_sim:
+            best, best_sim = rec, sim
+    if best and best_sim >= 97:
+        return best, "high", best_sim
+    if best and best_sim >= 92:
+        return best, "medium", best_sim
+    return None
+
+
 def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop):
-    """Fill in missing DOIs/PMIDs and metadata using Crossref and PubMed."""
-    # 1. Studies without DOI or PMID → Crossref citation matching
+    """Fill in missing DOIs/PMIDs and metadata, cheapest source first.
+
+    1. PubMed title search, batched (~10 titles per request; most included health studies are in PubMed).
+    2. Crossref citation matching for what is left (1 request/second on the public API).
+    """
+    pm_records: dict[str, dict] = {}
     todo = [s for s in studies if not s.identified]
-    for i, s in enumerate(todo):
-        progress(i / max(len(todo), 1), f"Identifying references without DOI/PMID ({i + 1}/{len(todo)})")
-        query = s.raw if len(s.raw or "") > len(s.title or "") else " ".join(
-            filter(None, [s.title, " ".join(s.authors[:3]), str(s.year or ""), s.journal or ""]))
+
+    # 1. PubMed, batched by title
+    with_title = [s for s in todo if s.title and len(normalize_title(s.title) or "") >= 20]
+    if with_title:
+        progress(0.0, f"Searching PubMed for {len(with_title)} references without DOI/PMID")
+        try:
+            found = pubmed.search_titles([s.title for s in with_title])
+            pm_records.update(found)
+            cands = list(found.values())
+            for s in with_title:
+                hit = _accept_pubmed(s, cands)
+                if hit:
+                    rec, conf, sim = hit
+                    s.pmid, s.doi = rec["pmid"], s.doi or rec.get("doi")
+                    s.id_method, s.id_confidence = "PubMed title match", conf
+                    s.id_notes.append(f"Found in PubMed by title (similarity {sim:.0f}%).")
+        except Exception as e:  # network/XML problems shouldn't stop the run
+            for s in with_title:
+                dossiers[s.uid].errors.append(f"PubMed title search failed: {e}")
+
+    # 2. Crossref citation matching for the rest
+    rest = [s for s in todo if not s.identified]
+    t0 = time.monotonic()
+    for i, s in enumerate(rest):
+        eta = ""
+        if i >= 3:
+            left = (time.monotonic() - t0) / i * (len(rest) - i)
+            eta = f" · about {left / 60:.0f} min left" if left >= 90 else f" · about {left:.0f} s left"
+        progress(i / max(len(rest), 1), f"Crossref citation matching for references not in PubMed ({i + 1}/{len(rest)}){eta}")
+        structured = " ".join(filter(None, [s.title, " ".join(s.authors[:3]), str(s.year or ""), s.journal or ""]))
+        free_text = s.source_format in ("Free text", "Word", "PDF")
+        query = s.raw if (free_text and s.raw) or not s.title else structured
         if not query.strip():
             continue
         try:
-            items = crossref.match_citation(query)
+            items = crossref.match_citation(query[:500])
         except SourceError as e:
             dossiers[s.uid].errors.append(f"Crossref citation matching failed: {e}")
             continue
@@ -120,11 +170,10 @@ def identify(studies: list[Study], dossiers: dict[str, Dossier], progress: Progr
             s.id_confidence = conf
             s.id_notes.append(f"DOI found by Crossref citation matching (title similarity {sim:.0f}%).")
         else:
-            s.id_notes.append("No confident Crossref match; study could only be checked by title.")
+            s.id_notes.append("Not found in PubMed or Crossref; checked by title only.")
 
     # 2. DOI → PMID (batch), and PubMed records for all PMIDs
     need_pmid = [s for s in studies if s.doi and not s.pmid]
-    pm_records: dict[str, dict] = {}
     try:
         if need_pmid:
             progress(0.0, "Looking up PubMed IDs")
@@ -172,21 +221,17 @@ def _fill_metadata(s: Study, d: Dossier):
 def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop):
     with_doi = [s for s in studies if s.doi]
 
-    def _cr(s: Study):
-        try:
-            msg = crossref.work(s.doi)
-            return s.uid, (crossref.summarize(msg) if msg else None), None
-        except SourceError as e:
-            return s.uid, None, str(e)
-
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        for i, (uid, summ, err) in enumerate(ex.map(_cr, with_doi)):
-            progress(i / max(len(with_doi), 1), f"Crossref: {i + 1}/{len(with_doi)}")
-            if err:
-                dossiers[uid].errors.append(f"Crossref: {err}")
-            elif summ:
-                dossiers[uid].crossref = summ
-                dossiers[uid].sources_checked.append("Crossref")
+    progress(0.0, f"Crossref: notices for {len(with_doi)} DOIs")
+    try:
+        works = crossref.works_by_doi([s.doi for s in with_doi])
+        for s in with_doi:
+            msg = works.get(s.doi)
+            if msg:
+                dossiers[s.uid].crossref = crossref.summarize(msg)
+                dossiers[s.uid].sources_checked.append("Crossref")
+    except SourceError as e:
+        for s in with_doi:
+            dossiers[s.uid].errors.append(f"Crossref: {e}")
 
     progress(0.0, "OpenAlex")
     try:
@@ -335,6 +380,23 @@ def _merge_duplicates(studies: list[Study], dossiers: dict, info: RunInfo):
     studies[:] = keep
 
 
+def identify_from_rw(studies: list[Study], rw: RWIndex):
+    """First pass, local and instant: a reference with no DOI/PMID whose exact title is in Retraction Watch
+    (confirmed by first author or year) takes its identifiers from the Retraction Watch record."""
+    for s in studies:
+        if s.identified or not s.title:
+            continue
+        for r in rw.find_by_title(s.title):
+            rec = rw.record(r)
+            if (rec["paper_doi"] or rec["paper_pmid"]) and _corroborate(s, rec):
+                s.doi = s.doi or rec["paper_doi"]
+                s.pmid = s.pmid or rec["paper_pmid"]
+                s.id_method, s.id_confidence = "Retraction Watch title match", "high"
+                s.id_notes.append("Identifiers taken from the matching Retraction Watch record (exact title, "
+                                  "confirmed by author or year).")
+                break
+
+
 def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progress = _noop) -> tuple[dict, RunInfo]:
     info = RunInfo(started=now_utc(), online=online)
     dossiers = {s.uid: Dossier() for s in studies}
@@ -342,6 +404,7 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
         f"{rw.meta.get('source')}; file downloaded {rw.meta.get('downloaded_on')}; "
         f"{rw.meta.get('n_records'):,} records; latest notice {rw.meta.get('latest_notice')}"
     )
+    identify_from_rw(studies, rw)
     if online:
         identify(studies, dossiers, progress)
         _merge_duplicates(studies, dossiers, info)
