@@ -21,7 +21,7 @@ DATA_DIR = os.environ.get(
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data"),
 )
 CACHE_PATH = os.path.join(DATA_DIR, "http_cache.sqlite")
-USER_AGENT = "INSPECT-SR-assistant/0.2 (systematic review integrity screening; research prototype)"
+USER_AGENT = "RetractionWatchCheck/0.3 (systematic review retraction screening; research prototype)"
 DEFAULT_TTL = 24 * 3600
 
 _lock = threading.Lock()

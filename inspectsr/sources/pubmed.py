@@ -19,7 +19,7 @@ COMMENT_REFS = {"CommentIn"}
 
 
 def _base() -> dict:
-    p = {"tool": "inspect-sr-assistant"}
+    p = {"tool": "retraction-watch-check"}
     if os.environ.get("NCBI_API_KEY"):
         p["api_key"] = os.environ["NCBI_API_KEY"]
     return p

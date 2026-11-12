@@ -8,7 +8,6 @@ from typing import Optional
 import pandas as pd
 
 from . import __version__
-from .framework import CHECKS_BY_ID
 from .models import CheckResult, Study
 from .pipeline import RunInfo
 from .status import (DECISIONS, DEFAULT_REVIEW, NOT_SELECTED, NOT_YET, OUTCOMES, Flag, Notice, group,
@@ -16,6 +15,12 @@ from .status import (DECISIONS, DEFAULT_REVIEW, NOT_SELECTED, NOT_YET, OUTCOMES,
 
 CHECK_LABELS = {"1.1": "Retraction", "1.2": "Expression of concern / correction",
                 "1.3": "Authors' other retractions", "2.2": "Trial registration"}
+CHECK_QUESTIONS = {
+    "1.1": "Has the study been retracted?",
+    "1.2": "Is there an expression of concern or a correction?",
+    "1.3": "Do the first or last authors have other retractions for research-integrity reasons?",
+    "2.2": "Was the trial registered, and before it started?",
+}
 
 
 @dataclass
@@ -155,7 +160,7 @@ class Assessment:
         for s in self.studies:
             for cid, r in self.results[s.uid].items():
                 rows.append({"ID": s.uid, "Study": s.label, "Check": CHECK_LABELS.get(cid, cid),
-                             "Question": CHECKS_BY_ID[cid].question if cid in CHECKS_BY_ID else "",
+                             "Question": CHECK_QUESTIONS.get(cid, ""),
                              "Finding": r.proposed.value, "Explanation": r.rationale, "N evidence": len(r.evidence)})
         return pd.DataFrame(rows)
 

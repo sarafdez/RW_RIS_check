@@ -40,13 +40,12 @@ The first run downloads the Retraction Watch database (~70 MB, Crossref open dat
 
 | Check | Sources |
 |---|---|
-| 1.1 Retraction | Retraction Watch (DOI, PMID, exact and fuzzy title), Crossref update notices, PubMed publication types and linked notices, OpenAlex |
-| 1.2 Expression of concern / other notices | Same sources, plus comments linked in PubMed |
-| 1.3 Retractions by the research team | Retraction Watch author names (also with names swapped), OpenAlex disambiguated author IDs |
-| 2.2 Timing or absence of trial registration | Trial IDs from the record, abstract and PubMed; ClinicalTrials.gov dates |
+| Retraction | Retraction Watch (DOI, PMID, exact and fuzzy title), Crossref update notices, PubMed publication types and linked notices, OpenAlex |
+| Expression of concern / correction | Same sources, plus comments linked in PubMed |
+| Authors' other retractions | Retraction Watch author names (also with names swapped), OpenAlex disambiguated author IDs |
+| Trial registration timing | Trial IDs from the record, abstract and PubMed; ClinicalTrials.gov dates |
 
-The check structure follows the INSPECT-SR tool (Wilkinson J, et al. *BMJ* 2026;394:e100611). Checks that need the
-full text can be answered manually on the study pages.
+Flagged studies are listed with the reason for each flag, and you record your own decision for each one.
 
 ## Structure
 

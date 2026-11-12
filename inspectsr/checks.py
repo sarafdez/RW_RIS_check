@@ -103,8 +103,7 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                            data={"kind": "unidentified"})
     return CheckResult("1.1", Answer.NO if s.identified else Answer.UNCLEAR,
                        f"No retraction found in: {srcs}." + _not_identified_note(s) +
-                       " Guidance: also check the article page on the journal website, and repeat shortly before "
-                       "finishing the review.", [], needs_review=False, data={"kind": "none"})
+                       " Tip: notices can appear late, so repeat the check shortly before finishing the review.", [], needs_review=False, data={"kind": "none"})
 
 
 # ---- 1.2 Expressions of concern and other notices ------------------------------------
@@ -152,8 +151,8 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                            data={"kind": "possible"})
     note = ""
     if comments:
-        note = (f" {len(comments)} comment(s)/letter(s) are linked in PubMed. Guidance: critical correspondence "
-                "should not automatically trigger concerns, but may point to problems.")
+        note = (f" {len(comments)} comment(s)/letter(s) are linked in PubMed (letters or "
+                "commentaries). These are not notices, but can be worth a look.")
     return CheckResult("1.2", Answer.NO if s.identified else Answer.UNCLEAR,
                        "No expression of concern or correction found." + note + _not_identified_note(s) +
                        " Also consider PubPeer comments (link on the study page).", comments,
@@ -242,7 +241,7 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     checked = ", ".join(d.author_rw.keys())
     return CheckResult("1.3", Answer.NO,
                        f"No retractions or expressions of concern found for first/last author ({checked}). "
-                       "Guidance: also check the corresponding author, and middle authors where relevant.", [])
+                       "Only the first and last authors are checked.", [])
 
 
 # ---- 2.2 Registration timing / absence -----------------------------------------------
@@ -286,9 +285,9 @@ def check_2_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         elif lag <= 30:
             msgs.append(f"{t}: registered {'before' if lag <= 0 else f'{lag} days after'} the study start (prospective or near-prospective).")
         elif lag <= 180:
-            msgs.append(f"{t}: registered {lag} days after the study start. Guidance: registration soon after "
-                        "recruitment begins might not warrant concerns; consider how much was recruited by then. "
-                        "If the trial is also registered elsewhere (e.g. ISRCTN), the earliest registration counts.")
+            msgs.append(f"{t}: registered {lag} days after the study start. A short delay is common "
+                        "and usually not a concern. If the trial is also registered elsewhere (e.g. ISRCTN), the earliest "
+                        "registration counts.")
             worst = max(worst, Answer.UNCLEAR, key=order.get)
         else:
             msgs.append(f"{t}: registered {lag} days (~{lag / 365:.1f} years) after the study start (retrospective).")
