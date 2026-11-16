@@ -530,7 +530,7 @@ def link_notices_rw(studies: list[Study], dossiers: dict, info: RunInfo, rw: RWI
     by_pmid = {s.pmid: s for s in studies if s.pmid}
     merged = []
     for s in studies:
-        if not s.doi or s.doi not in rw.by_notice_doi:
+        if not s.doi or s.doi not in getattr(rw, "by_notice_doi", {}):
             continue
         s.design = "Notice (not a study)"
         rec = rw.record(rw.by_notice_doi[s.doi][0])

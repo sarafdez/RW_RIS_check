@@ -46,14 +46,20 @@ def status_badge(status: str) -> str:
 # ---- data ------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner="Loading the Retraction Watch database…")
-def get_rw(mtime: float):
+def get_rw(mtime: float, version: str):
+    # `version` is part of the cache key: after an app update the index is rebuilt with the new code,
+    # instead of reusing an object built by the old code (which may lack newer fields).
     return rwmod.load()
 
 
 def rw_index():
     try:
         mtime = os.path.getmtime(rwmod.LOCAL_CSV) if os.path.exists(rwmod.LOCAL_CSV) else 0
-        return get_rw(mtime)
+        idx = get_rw(mtime, __version__)
+        if not hasattr(idx, "by_notice_doi"):  # built by older code: rebuild
+            get_rw.clear()
+            idx = get_rw(mtime, __version__)
+        return idx
     except Exception as e:
         st.error(f"Could not load the Retraction Watch database: {e}")
         st.stop()
