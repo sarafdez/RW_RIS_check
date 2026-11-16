@@ -13,6 +13,7 @@ import streamlit as st
 from inspectsr import __version__, charts, explore, inputs, pipeline
 from inspectsr.assessment import CHECK_LABELS, Assessment, build
 from inspectsr.models import Answer, Study
+from inspectsr.sources import crossref_notices as crmod
 from inspectsr.sources import retraction_watch as rwmod
 from inspectsr.sources.registries import registry_url
 from inspectsr.status import (AUTHOR_UNCHECKED, AUTHOR_VERDICTS, DECISIONS, NOT_SELECTED, NOT_YET, STATUS_INFO,
@@ -66,6 +67,26 @@ def rw_index():
         st.stop()
 
 
+@st.cache_resource(show_spinner=False)
+def crossref_list_holder(version: str) -> dict:
+    """Load the Crossref notice list; download or refresh it in a background thread so nobody waits."""
+    import threading
+    h = {"index": crmod.load(), "status": "ready" if crmod.is_fresh() else "downloading", "progress": 0.0, "msg": ""}
+
+    def work():
+        try:
+            crmod.download(progress=lambda p, m: h.update(progress=p, msg=m))
+            h["index"] = crmod.load()
+            h["status"] = "ready"
+        except Exception as e:  # keep any older copy
+            h["status"] = "error" if h["index"] is None else "ready"
+            h["msg"] = str(e)
+
+    if h["status"] == "downloading":
+        threading.Thread(target=work, daemon=True).start()
+    return h
+
+
 ss = st.session_state
 ss.setdefault("page", PAGES[0])
 if ss.page not in PAGES:  # page renamed or removed by an app update
@@ -97,10 +118,22 @@ with st.sidebar:
     st.markdown("**Retraction Watch database**")
     st.caption(f"{rw.meta['n_records']:,} records · downloaded {rw.meta['downloaded_on']} · "
                f"latest notice {rw.meta.get('latest_notice')}")
-    if st.button("Update database", help="Download the latest Retraction Watch CSV from Crossref (~70 MB)"):
+    cr = crossref_list_holder(__version__)
+    if cr["index"] is not None:
+        st.caption(f"+ Crossref: {cr['index'].meta['n_notices']:,} retraction/concern notices · downloaded "
+                   f"{cr['index'].meta['downloaded_on']}")
+    if cr["status"] == "downloading":
+        st.progress(cr["progress"], text=cr["msg"] or "Downloading the Crossref notice list…")
+    elif cr["status"] == "error":
+        st.caption(f"Crossref notice list unavailable: {cr['msg']}")
+    if st.button("Update databases", help="Download the latest Retraction Watch file (~70 MB) and refresh the "
+                                          "Crossref notice list (in the background, a few minutes)"):
         with st.spinner("Downloading…"):
             rwmod.download()
         get_rw.clear()
+        if os.path.exists(crmod.LOCAL_CSV):
+            os.utime(crmod.LOCAL_CSV, (0, 0))  # mark as old so it is refreshed
+        crossref_list_holder.clear()
         st.rerun()
     a: Assessment | None = ss.assessment
     if a:
@@ -129,7 +162,8 @@ def page_input():
     st.title("Check your included studies")
     st.markdown(
         "Upload the **studies included in your review** in any common format. Each study is checked against the "
-        "**Retraction Watch** database and, depending on the check type you choose below, PubMed and other sources. "
+        "**Retraction Watch** database and Crossref's list of retraction notices (including those deposited by "
+        "publishers) and, if you choose, PubMed and other sources. "
         "Every finding comes with its evidence, and you decide what to do with each flagged study."
     )
     files = st.file_uploader(
@@ -195,11 +229,12 @@ def page_input():
     m4.metric("Need identification", n_inc - n_id)
 
     st.subheader("Choose a check type")
-    ss.setdefault("check_mode", "standard")
-    labels = {"quick": "⚡ Quick", "standard": "✓ Standard (recommended)", "extended": "🔍 Extended"}
-    about = {"quick": "Retraction Watch only. No internet. Seconds, even for 10,000 references.",
-             "standard": "Adds PubMed: finds missing DOIs, PubMed's own retraction tags and notices, trial "
-                         "registrations. About 1 minute per 1,500 references.",
+    ss.setdefault("check_mode", "quick")
+    labels = {"quick": "⚡ Quick (recommended)", "standard": "✓ Standard", "extended": "🔍 Extended"}
+    about = {"quick": "Retraction Watch + Crossref's list of retraction and concern notices (incl. publisher "
+                      "notices). Works offline. Seconds, even for 10,000 references.",
+             "standard": "Adds PubMed: finds DOIs for references without one, corrections, and trial "
+                         "registration dates. About 30 seconds per 1,000 references.",
              "extended": "Adds Crossref publisher notices (mainly corrections) and OpenAlex. Slow for large lists "
                          "(Crossref allows 1 request per second)."}
     cols = st.columns(3)
@@ -218,7 +253,8 @@ def page_input():
         def progress(p: float, msg: str):
             bar.progress(min(max(p, 0.0), 1.0), text=msg)
 
-        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress, mode=mode)
+        dossiers, info = pipeline.run(studies, rw, online=True, progress=progress, mode=mode,
+                                      cr_notices=crossref_list_holder(__version__)["index"])
         ss.assessment = build(studies, dossiers, info, rw, {"online": True})
         bar.progress(1.0, text="Done")
         goto(PAGES[1])
@@ -358,7 +394,9 @@ def page_overview():
     steps = [(label, int(counts.get(key, 0))) for key, label in steps_def]
     st.altair_chart(charts.funnel(steps), width="stretch")
     n_all, n_id = len(summ), int((~summ["Identification"].str.startswith("Not identified")).sum())
-    others = [k for k in ("PubMed", "Crossref", "OpenAlex") if k in a.run.sources]
+    others = [lab for lab, keys in (("Crossref's notice list", ("Crossref notice list",)), ("PubMed", ("PubMed",)),
+                                    ("Crossref", ("Crossref",)), ("OpenAlex", ("OpenAlex",)))
+              if any(k in a.run.sources for k in keys)]
     st.caption(f"Check type: **{a.run.sources.get('Check type', '')}**. After identification, **all {n_all} studies "
                f"were checked against Retraction Watch**: {n_id} by DOI/PubMed ID and title, and {n_all - n_id} by "
                f"title only." + (f" The identified studies were also checked in {', '.join(others)}." if others else ""))
@@ -372,7 +410,9 @@ def page_overview():
 
 def charts_summary(summ: pd.DataFrame) -> list[str]:
     from inspectsr.status import summary_sentences
-    srcs = [k for k in ("PubMed", "Crossref", "OpenAlex") if k in ss.assessment.run.sources]
+    rs = ss.assessment.run.sources
+    srcs = [lab for lab, keys in (("Crossref", ("Crossref", "Crossref notice list")), ("PubMed", ("PubMed",)),
+                                  ("OpenAlex", ("OpenAlex",))) if any(k in rs for k in keys)]
     return summary_sentences(summ.to_dict("records"), ", ".join(srcs))
 
 

@@ -47,6 +47,7 @@ class Dossier:
     errors: list[str] = field(default_factory=list)
     sources_checked: list[str] = field(default_factory=list)
     notice_info: dict = field(default_factory=dict)          # "doi:x" / "pmid:y" -> {"title", "citation"}
+    cr_list: list = field(default_factory=list)              # notices from the downloaded Crossref list
 
 
 @dataclass
@@ -605,14 +606,22 @@ def identify_from_rw(studies: list[Study], rw: RWIndex):
 
 
 MODES = {
-    "quick": "Quick: Retraction Watch only",
+    "quick": "Quick: Retraction Watch + Crossref",
     "standard": "Standard: Retraction Watch + PubMed",
     "extended": "Extended: + Crossref publisher notices and OpenAlex",
 }
 
 
+def match_crossref_list(studies: list[Study], dossiers: dict, cr) -> None:
+    """Offline: notices for each study from the downloaded Crossref list (by DOI; by exact title without a DOI)."""
+    for s in studies:
+        dossiers[s.uid].cr_list = cr.find(s.doi, s.title)
+        if dossiers[s.uid].cr_list and "Crossref" not in dossiers[s.uid].sources_checked:
+            dossiers[s.uid].sources_checked.append("Crossref")
+
+
 def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progress = _noop,
-        mode: str = "standard") -> tuple[dict, RunInfo]:
+        mode: str = "standard", cr_notices=None) -> tuple[dict, RunInfo]:
     """mode: 'quick' (Retraction Watch only, no internet), 'standard' (+ PubMed and ClinicalTrials.gov) or
     'extended' (+ Crossref publisher notices, OpenAlex title search and author IDs, Crossref citation matching)."""
     online = online and mode != "quick"
@@ -643,6 +652,14 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
     if online:
         link_notices(studies, dossiers, info)
     match_rw(studies, dossiers, rw, progress)
+    if cr_notices is not None:
+        match_crossref_list(studies, dossiers, cr_notices)
+        info.sources["Crossref notice list"] = (f"{cr_notices.meta['n_notices']:,} retraction and expression-of-concern "
+                                                f"notices; downloaded {cr_notices.meta['downloaded_on']}")
+    else:
+        info.errors.append("The Crossref notice list was not available yet (still downloading), so publisher-deposited "
+                           "retractions that are missing from Retraction Watch were not checked. Run the check again "
+                           "in a few minutes.")
     if online:
         fetch_notice_titles(studies, dossiers, rw, progress, extended=extended)
     info.errors = sorted({e for d in dossiers.values() for e in d.errors})

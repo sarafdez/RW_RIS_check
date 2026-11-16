@@ -399,3 +399,28 @@ def test_author_verdict_removes_or_keeps_flag():
     assert not any(f.status == "Authors' other retractions" for f in a.status(s.uid)[1])
     a.author_reviews[lead["key"]] = {"verdict": "Same person", "note": ""}
     assert any("you confirmed" in f.why for f in a.status(s.uid)[1])
+
+
+def test_crossref_notice_list_flags_publisher_only_retraction(tmp_path):
+    import csv
+    from inspectsr.pipeline import Dossier, match_crossref_list
+    from inspectsr.sources import crossref_notices as cn
+    p = tmp_path / "cr.csv"
+    with open(p, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(cn.FIELDS)
+        w.writerow(["10.5555/pub.only", "10.5555/notice.1", "retraction", "publisher", "2024-03-01",
+                    "Retraction Note: A publisher only retracted paper about something important"])
+        w.writerow(["10.5555/eoc.paper", "10.5555/notice.2", "expression_of_concern", "publisher", "2023-01-01",
+                    "Expression of concern: Another paper"])
+    idx = cn.load(str(p))
+    a = Study("S001", title="A publisher only retracted paper about something important", doi="10.5555/pub.only")
+    b = Study("S002", title="A publisher only retracted paper about something important")  # no DOI: title match
+    c = Study("S003", title="Another paper title that is long enough to match", doi="10.5555/eoc.paper")
+    rw = _rw()
+    ds = {s.uid: Dossier() for s in (a, b, c)}
+    match_crossref_list([a, b, c], ds, idx)
+    assert ds["S001"].cr_list[0]["match"] == "doi" and ds["S002"].cr_list[0]["match"] == "title_exact"
+    assert study_status(a, run_checks(a, ds["S001"], rw))[0] == "Retracted"
+    assert study_status(b, run_checks(b, ds["S002"], rw))[0] == "Retracted"
+    assert study_status(c, run_checks(c, ds["S003"], rw))[0] == "Expression of concern"

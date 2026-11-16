@@ -109,6 +109,17 @@ def notice_kind(title, pub_types=None, nature=None) -> str:
     return "Correction"
 
 
+_NOTICE_PREFIX = re.compile(
+    r"^\s*(retracted article|retracted|retraction( note| notice| statement)?|notice of retraction|statement of retraction|"
+    r"withdrawn|withdrawal|corrigendum|erratum|correction|editorial expression of concern|expression of concern)"
+    r"(\s+(to|for|of|on|concerning))?\s*[:\-–—.]?\s*", re.IGNORECASE)
+
+
+def strip_notice_prefix(title) -> str:
+    """'Retraction Note: <title>' -> '<title>' (for matching a notice to the paper it concerns)."""
+    return _NOTICE_PREFIX.sub("", str(title or ""), count=1)
+
+
 def is_notice_title(title) -> bool:
     return bool(title and NOTICE_TITLE_RE.match(str(title)))
 

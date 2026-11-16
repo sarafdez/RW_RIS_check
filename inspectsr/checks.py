@@ -28,6 +28,19 @@ def _ntext(d: Dossier, doi: str | None = None, pmid: str | None = None) -> str:
     return n["title"] + (f" ({n['citation']})" if n.get("citation") else "")
 
 
+def _cr_list_evidence(d: Dossier, retraction: bool) -> list[Evidence]:
+    """Notices from the downloaded Crossref list (retraction-type or expression of concern)."""
+    out = []
+    for n in d.cr_list:
+        is_ret = n["type"] != "expression_of_concern"
+        if is_ret != retraction:
+            continue
+        out.append(Evidence("Crossref", n["label"], f"Asserted by: {n['source']}", n["date"],
+                            DOI.format(n["notice_doi"]) if n["notice_doi"] else None, n["match"],
+                            text=n["notice_title"] or ""))
+    return out
+
+
 def _listed_notices(s: Study, ntype: str) -> list[Evidence]:
     """Notices that were in the reference list and merged into this study."""
     return [Evidence("Your reference list", n["type"], "This notice was also in your reference list (merged into the study)",
@@ -81,6 +94,8 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                                pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid",
                                text=_ntext(d, pmid=link["pmid"])))
     ev += _listed_notices(s, "Retraction")
+    if d.crossref is None:  # per-DOI Crossref data (Extended) already covers these
+        ev += _cr_list_evidence(d, retraction=True)
     oa = d.openalex or {}
     if oa.get("is_retracted"):
         ev.append(Evidence("OpenAlex", "Retracted (is_retracted)", "", None, oa.get("id"), "doi"))
@@ -177,6 +192,8 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
             comments.append(e)
 
     eoc += _listed_notices(s, "Expression of concern")
+    if d.crossref is None:
+        eoc += _cr_list_evidence(d, retraction=False)
     other += _listed_notices(s, "Correction")
     if eoc:
         msg = "Expression of concern found. Read the notice: is an investigation ongoing? Check the journal site again before finishing the review."
