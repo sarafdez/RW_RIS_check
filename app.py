@@ -119,9 +119,9 @@ def open_study(uid: str):
 def page_input():
     st.title("Check your included studies")
     st.markdown(
-        "Upload the **studies included in your review** in any common format. Each study is identified and checked "
-        "against the Retraction Watch database, Crossref, PubMed, OpenAlex and ClinicalTrials.gov. Every finding comes "
-        "with its evidence, and you can override every proposed answer."
+        "Upload the **studies included in your review** in any common format. Each study is checked against the "
+        "**Retraction Watch** database and, depending on the check type you choose below, PubMed and other sources. "
+        "Every finding comes with its evidence, and you decide what to do with each flagged study."
     )
     files = st.file_uploader(
         "Reference files",
@@ -168,15 +168,8 @@ def page_input():
         "Design (detected)": s.design, "Source": f"{s.source_file} ({s.source_format})",
         "Citation text": s.raw[:300],
     } for s in ss.parsed])
-    mode = st.radio(
-        "Check type", list(pipeline.MODES), index=1, horizontal=True, format_func=lambda m: pipeline.MODES[m],
-        captions=["Seconds, even for 10,000 references. No internet needed. Matches by DOI, PubMed ID and title.",
-                  "Recommended. Also uses PubMed to find missing DOIs, its retraction tags and linked notices, and "
-                  "trial registrations. About 1 minute per 1,500 references.",
-                  "Also Crossref publisher notices (mainly corrections) and OpenAlex (papers not in PubMed, author "
-                  "IDs). Slow for large lists: Crossref allows 1 request per second."])
-    st.caption("Untick records that are not included studies (e.g. notices or background references). You can fix a "
-               "DOI, PMID or title directly in the table. Records without DOI/PMID will be looked up via Crossref.")
+    st.caption("Untick records that are not included studies (e.g. background references). You can fix a "
+               "DOI, PMID or title directly in the table.")
     edited = st.data_editor(
         df, hide_index=True, width="stretch", key="editor",
         disabled=["ID", "Design (detected)", "Source", "Citation text"],
@@ -192,7 +185,24 @@ def page_input():
     m3.metric("With DOI or PMID", n_id)
     m4.metric("Need identification", n_inc - n_id)
 
-    if st.button(f"Run checks on {n_inc} studies", type="primary", disabled=n_inc == 0):
+    st.subheader("Choose a check type")
+    ss.setdefault("check_mode", "standard")
+    labels = {"quick": "⚡ Quick", "standard": "✓ Standard (recommended)", "extended": "🔍 Extended"}
+    about = {"quick": "Retraction Watch only. No internet. Seconds, even for 10,000 references.",
+             "standard": "Adds PubMed: finds missing DOIs, PubMed's own retraction tags and notices, trial "
+                         "registrations. About 1 minute per 1,500 references.",
+             "extended": "Adds Crossref publisher notices (mainly corrections) and OpenAlex. Slow for large lists "
+                         "(Crossref allows 1 request per second)."}
+    cols = st.columns(3)
+    for col, m in zip(cols, pipeline.MODES):
+        col.button(labels[m], key=f"mode_{m}", width="stretch",
+                   type="primary" if ss.check_mode == m else "secondary",
+                   on_click=lambda m=m: ss.update(check_mode=m))
+        col.caption(about[m])
+    mode = ss.check_mode
+
+    if st.button(f"Run {labels[mode].split(' ', 1)[1].replace(' (recommended)', '')} check on {n_inc} studies",
+                 type="primary", disabled=n_inc == 0):
         studies = _apply_edits(ss.parsed, edited)
         bar = st.progress(0.0, text="Starting…")
 
