@@ -66,6 +66,14 @@ if "_goto" in ss:  # navigation requested by a button in the previous run
 ss.setdefault("parsed", [])        # list[Study]
 ss.setdefault("reports", [])
 ss.setdefault("assessment", None)  # Assessment
+# When the app is updated while a session is open (e.g. a redeploy on Streamlit Cloud), results stored in the
+# session were made by the old code and may lack newer features. Discard them instead of crashing.
+_stale = ss.assessment is not None and (not isinstance(ss.assessment, Assessment)
+                                        or ss.get("app_version") != __version__)
+if _stale:
+    ss.assessment = None
+    ss["_stale_notice"] = True
+ss["app_version"] = __version__
 ss.setdefault("input_round", 0)     # bumping this gives the upload and paste boxes fresh, empty widgets
 
 
@@ -240,6 +248,9 @@ def _apply_edits(parsed: list[Study], edited: pd.DataFrame) -> list[Study]:
 # =====================================================================================
 
 def need_assessment() -> Assessment | None:
+    if ss.pop("_stale_notice", False):
+        st.warning("The app was updated since your last check, so the previous results were cleared. "
+                   "Please run the check again on the Input page.")
     if ss.assessment is None:
         st.info("No results yet. Start on the **Input** page.")
         st.button("Go to Input", on_click=goto, args=(PAGES[0],))
