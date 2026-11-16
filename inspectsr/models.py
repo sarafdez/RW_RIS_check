@@ -97,6 +97,7 @@ class Study:
     id_notes: list[str] = field(default_factory=list)
     ris: Optional[dict] = None          # the original RIS record (re-exported unchanged)
     notice_for: Optional[dict] = None   # if this reference is a notice: the original article (doi, pmid, title, ...)
+    merged_notices: list = field(default_factory=list)  # notices from the reference list merged into this study
 
     @property
     def people(self) -> list[str]:

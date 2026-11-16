@@ -96,6 +96,19 @@ def normalize_title(title) -> Optional[str]:
     return t.strip() or None
 
 
+def notice_kind(title, pub_types=None, nature=None) -> str:
+    """Retraction / Expression of concern / Correction for a reference that is itself a notice."""
+    if nature in ("Retraction", "Expression of concern", "Correction"):
+        return nature
+    t = (title or "").lower()
+    pts = {p.lower() for p in pub_types or []}
+    if re.search(r"retract|withdraw", t) or "retraction of publication" in pts:
+        return "Retraction"
+    if "concern" in t or "expression of concern" in pts:
+        return "Expression of concern"
+    return "Correction"
+
+
 def is_notice_title(title) -> bool:
     return bool(title and NOTICE_TITLE_RE.match(str(title)))
 

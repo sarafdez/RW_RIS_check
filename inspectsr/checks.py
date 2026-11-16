@@ -28,6 +28,13 @@ def _ntext(d: Dossier, doi: str | None = None, pmid: str | None = None) -> str:
     return n["title"] + (f" ({n['citation']})" if n.get("citation") else "")
 
 
+def _listed_notices(s: Study, ntype: str) -> list[Evidence]:
+    """Notices that were in the reference list and merged into this study."""
+    return [Evidence("Your reference list", n["type"], "This notice was also in your reference list (merged into the study)",
+                     n.get("date"), DOI.format(n["doi"]) if n.get("doi") else None, "your list", text=n.get("title") or "")
+            for n in s.merged_notices if n["type"] == ntype]
+
+
 def _rw_evidence(rec: dict, match, d: Dossier | None = None) -> Evidence:
     reasons = "; ".join(rec["reasons"][:6])
     url = DOI.format(rec["notice_doi"]) if rec["notice_doi"] else (rec["urls"][0] if rec["urls"] else None)
@@ -73,6 +80,7 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
                                str(link["year"]) if link["year"] else None,
                                pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None, "pmid",
                                text=_ntext(d, pmid=link["pmid"])))
+    ev += _listed_notices(s, "Retraction")
     oa = d.openalex or {}
     if oa.get("is_retracted"):
         ev.append(Evidence("OpenAlex", "Retracted (is_retracted)", "", None, oa.get("id"), "doi"))
@@ -108,17 +116,8 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
 def _notice_record(s: Study, d: Dossier) -> CheckResult:
     """The reference in the list is itself a notice (corrigendum, erratum, retraction notice, EoC).
     That means the study it belongs to has that notice: report it as such, and name the original if known."""
-    title = (s.title or "").lower()
-    pts = {p.lower() for p in s.pub_types}
-    nature = (s.notice_for or {}).get("nature")
-    if nature in ("Retraction", "Expression of concern", "Correction"):
-        ntype = nature
-    elif re.search(r"retract|withdraw", title) or "retraction of publication" in pts:
-        ntype = "Retraction"
-    elif "concern" in title or "expression of concern" in pts:
-        ntype = "Expression of concern"
-    else:
-        ntype = "Correction"
+    from .normalize import notice_kind
+    ntype = notice_kind(s.title, s.pub_types, (s.notice_for or {}).get("nature"))
     original, orig_url = None, None
     if s.notice_for and (s.notice_for.get("doi") or s.notice_for.get("pmid")):
         nf = s.notice_for
@@ -177,6 +176,8 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         elif link["ref_type"] in pubmed.COMMENT_REFS:
             comments.append(e)
 
+    eoc += _listed_notices(s, "Expression of concern")
+    other += _listed_notices(s, "Correction")
     if eoc:
         msg = "Expression of concern found. Read the notice: is an investigation ongoing? Check the journal site again before finishing the review."
         if lifted:

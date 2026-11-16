@@ -5,6 +5,7 @@ that each proposed INSPECT-SR answer can be traced back to its evidence.
 """
 from __future__ import annotations
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -486,10 +487,40 @@ NOTICE_FOR_REFS = ("ErratumFor", "RetractionOf", "ExpressionOfConcernFor", "Corr
 
 
 def _merge_notice(s: Study, target: Study, info: RunInfo, merged: list):
+    from .normalize import notice_kind
+    target.merged_notices.append({
+        "type": notice_kind(s.title, s.pub_types, (s.notice_for or {}).get("nature")),
+        "title": s.title, "doi": s.doi, "date": s.pub_date or (str(s.year) if s.year else None)})
     target.id_notes.append(f"Your list also contained a notice for this study ({s.uid}: {s.title}); "
                            "it was merged into this study.")
     info.duplicates.append(f"{s.uid} is a notice for {target.uid} (the original article); merged into {target.uid}.")
     merged.append(s)
+
+
+_NOTICE_PREFIX = re.compile(
+    r"^\s*(corrigendum|erratum|correction|retraction( note| notice| statement)?|notice of retraction|"
+    r"statement of retraction|editorial expression of concern|expression of concern)"
+    r"(\s+(to|for|of|on))?\s*[:\-–—.]?\s*", re.IGNORECASE)
+
+
+def link_notices_by_title(studies: list[Study], dossiers: dict, info: RunInfo):
+    """Offline: a notice titled e.g. "Corrigendum: <original title>" is merged into the original article when that
+    article is also in the list."""
+    by_title = {}
+    for s in studies:
+        if s.design != "Notice (not a study)" and normalize_title(s.title):
+            by_title.setdefault(normalize_title(s.title), s)
+    merged = []
+    for s in studies:
+        if s.design != "Notice (not a study)" or not s.title:
+            continue
+        stripped = normalize_title(_NOTICE_PREFIX.sub("", s.title))
+        target = by_title.get(stripped) if stripped and len(stripped) >= 20 else None
+        if target and target is not s:
+            _merge_notice(s, target, info, merged)
+    for s in merged:
+        studies.remove(s)
+        dossiers.pop(s.uid, None)
 
 
 def link_notices_rw(studies: list[Study], dossiers: dict, info: RunInfo, rw: RWIndex):
@@ -595,6 +626,7 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
     )
     identify_from_rw(studies, rw)
     link_notices_rw(studies, dossiers, info, rw)
+    link_notices_by_title(studies, dossiers, info)
     if online:
         identify(studies, dossiers, progress, use_crossref=extended, use_openalex=extended)
         _merge_duplicates(studies, dossiers, info)

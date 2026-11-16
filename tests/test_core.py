@@ -367,3 +367,16 @@ def test_notice_linked_offline_via_retraction_watch_notice_doi():
     studies = [notice2, original]
     link_notices_rw(studies, {"S001": Dossier(), "S002": Dossier()}, info, rw)
     assert [s.uid for s in studies] == ["S002"] and any("merged" in x for x in info.duplicates)
+
+
+def test_notice_merged_into_original_by_title_offline():
+    from inspectsr.pipeline import Dossier, link_notices_by_title
+    corr = Study("S001", title="Corrigendum: Estimating the beginning of pregnancy in claims data",
+                 doi="10.3389/x.605076", design="Notice (not a study)", year=2020)
+    orig = Study("S002", title="Estimating the Beginning of Pregnancy in Claims Data", doi="10.3389/x.00350",
+                 year=2020, authors=["Schink, T"])
+    studies, info = [corr, orig], RunInfo()
+    link_notices_by_title(studies, {"S001": Dossier(), "S002": Dossier()}, info)
+    assert [s.uid for s in studies] == ["S002"] and orig.merged_notices[0]["type"] == "Correction"
+    rw, d = _run([orig])
+    assert study_status(orig, run_checks(orig, d[orig.uid], rw))[0] == "Correction"
