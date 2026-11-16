@@ -635,6 +635,21 @@ def _papers_table(papers: list[dict]):
                                 "Paper": st.column_config.TextColumn(width="large")})
 
 
+def _count_badge(n_int: int, label: str | None = None) -> str:
+    """Sequential red scale by number of integrity-related retractions; the number is always written."""
+    if n_int >= 5:
+        color, txt = "#a52a2a", "#ffffff"
+    elif n_int >= 2:
+        color, txt = "#d03b3b", "#ffffff"
+    elif n_int == 1:
+        color, txt = "#f4c7c7", "#0b0b0b"
+    else:
+        color, txt = "#e1e0d9", "#0b0b0b"
+    label = label or f"{n_int} integrity-related retraction{'s' if n_int != 1 else ''}"
+    return (f'<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:0.85rem;'
+            f'font-weight:700;background:{color};color:{txt};white-space:nowrap">{label}</span>')
+
+
 def page_authors():
     a = need_assessment()
     if not a:
@@ -651,6 +666,10 @@ def page_authors():
         done = int((leads["Your verdict"] != AUTHOR_UNCHECKED).sum())
         st.progress(done / len(leads), text=f"**{done} of {len(leads)} authors checked**"
                                             + (" ✓" if done == len(leads) else ""))
+        st.markdown(
+            "Sorted by the number of other retractions for **research-integrity reasons** (most first): "
+            + " ".join(_count_badge(k, lab) for k, lab in ((5, "5 or more"), (2, "2–4"), (1, "1"), (0, "none"))),
+            unsafe_allow_html=True)
         st.caption("How to check: open one or two of the other papers. Same field, same institution, shared "
                    "co-authors? Then it is the same person. “Different person” removes the warning from their studies.")
         for _, r in leads.iterrows():
@@ -663,8 +682,8 @@ def page_authors():
                 for x in r["Studies in your review"].split("; "):
                     m = _re.match(r"\S+ (.*) \((first|last) author\)$", x)
                     roles.append(f"{m.group(2)} author of *{m.group(1)}*" if m else x)
-                head = f"**{r['Author']}** — " + "; ".join(roles)
-                st.markdown(head)
+                head = f"{_count_badge(n_int)} &nbsp;**{r['Author']}** — " + "; ".join(roles)
+                st.markdown(head, unsafe_allow_html=True)
                 st.markdown(f"Has **{n} other retracted paper{'s' if n != 1 else ''} or concern{'s' if n != 1 else ''}**"
                             f" ({n_int} for research-integrity reasons, e.g. unreliable data, misconduct or paper "
                             f"mills). {WHY_SAME.get(r['Match'], '')}")

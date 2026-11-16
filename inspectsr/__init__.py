@@ -1,2 +1,2 @@
 """Retraction Watch check: retraction and post-publication notice checks for included studies."""
-__version__ = "0.5.2"
+__version__ = "0.5.3"
