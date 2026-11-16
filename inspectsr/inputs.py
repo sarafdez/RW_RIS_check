@@ -62,6 +62,16 @@ def _year(*vals) -> Optional[int]:
     return None
 
 
+def _precise_date(value) -> Optional[str]:
+    """ISO date only when the record gives at least a month; a bare year stays unknown (not "YYYY-01-01")."""
+    if is_missing(value):
+        return None
+    v = str(value).strip().rstrip("/").strip()
+    if re.fullmatch(r"\d{4}", v):
+        return None
+    return iso(v) if re.search(r"\d{4}[-/ ]\w", v) else None
+
+
 def finalize(study: Study) -> Study:
     """Fill derived fields: identifiers hidden in free text, trial IDs, design."""
     blob = " ".join(filter(None, [study.raw, study.abstract or "", study.title or ""]))
@@ -128,7 +138,7 @@ def parse_ris(text: str, name: str) -> list[Study]:
             doi=normalize_doi(_first(r.get("doi"))),
             pmid=pmid or (find_pmids(urls + " " + notes) or [None])[0],
             abstract=_first(r.get("abstract")),
-            pub_date=iso(_first(r.get("date"), r.get("publication_year"), r.get("year"))),
+            pub_date=_precise_date(_first(r.get("date"), r.get("publication_year"), r.get("year"))),
         )
         s.ris = {k: v for k, v in r.items() if k != "id"}
         out.append(finalize(s))
