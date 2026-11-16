@@ -610,77 +610,94 @@ def _author_links(name: str) -> str:
             f"[Google Scholar ↗](https://scholar.google.com/scholar?q=author%3A%22{full}%22)")
 
 
+def _set_author_verdict(key: str, verdict: str):
+    a = ss.assessment
+    cur = a.author_reviews.get(key, {})
+    a.author_reviews[key] = {"verdict": verdict, "note": cur.get("note", "")}
+
+
+def _set_author_note(key: str):
+    a = ss.assessment
+    cur = a.author_reviews.get(key, {})
+    a.author_reviews[key] = {"verdict": cur.get("verdict", AUTHOR_UNCHECKED), "note": ss.get(f"anote|{key}", "")}
+
+
+WHY_SAME = {"shared co-author": "Likely the same person: some of those papers share co-authors with your study.",
+            "same OpenAlex author ID": "Likely the same person: OpenAlex links those papers to the same author profile."}
+
+
+def _papers_table(papers: list[dict]):
+    df = pd.DataFrame([{"Paper": p["title"], "Notice": p["nature"], "Year": str(p["date"] or "")[:4],
+                        "Reasons (Retraction Watch)": "; ".join(p["reasons"]), "Link": p.get("notice")}
+                       for p in papers])
+    st.dataframe(df, hide_index=True, width="stretch",
+                 column_config={"Link": st.column_config.LinkColumn(display_text="open ↗"),
+                                "Paper": st.column_config.TextColumn(width="large")})
+
+
 def page_authors():
     a = need_assessment()
     if not a:
         return
-    st.title("Authors' other retractions")
-    st.markdown(
-        "The **first and last author** of every included study are looked up in Retraction Watch (and OpenAlex in "
-        "the Extended check). One row per **person**: if an author appears in several of your studies, you check "
-        "them once. Your verdict applies to all their studies.")
+    st.title("Authors with other retractions")
+    st.markdown("For every included study, the app looked up the **first and last author** in Retraction Watch. "
+                "The authors below have **other** retracted papers. That can be a warning sign about the research "
+                "team. Check that it is really the same person.")
     t = a.authors_table()
-    if t.empty:
-        st.success("None of the first or last authors has other retractions or expressions of concern.")
-        return
-    leads = t[t["Flagged lead"]]
-    checked = int((leads["Your verdict"] != AUTHOR_UNCHECKED).sum())
-    if len(leads):
-        st.progress(checked / len(leads), text=f"**Checked {checked} of {len(leads)} flagged authors**"
-                                               + (" · all done ✓" if checked == len(leads) else ""))
-    with st.expander("How to check an author (about a minute each)"):
-        st.markdown(
-            "1. Open one of the author's **other retracted papers** (links below) and compare with your study: "
-            "same **field**, same **institution/country**, overlapping **co-authors**?\n"
-            "2. If unsure, use the **PubMed / ORCID / Google Scholar** links to see the author's publication list.\n"
-            "3. Set **Your verdict**. *Different person* removes the flag from their studies; *Same person* keeps it "
-            "(and adds it for name-only matches with integrity-related retractions).\n\n"
-            "**Flagged leads** are already strong matches: the same OpenAlex author ID, or a retracted paper that shares a "
-            "co-author with your study. **Name-only matches** are often namesakes; they don't flag anything unless you "
-            "confirm them.")
-
-    show = st.radio("Show", ["Flagged leads", "Not yet checked", "All name matches"], horizontal=True,
-                    label_visibility="collapsed")
-    view = {"Flagged leads": leads, "Not yet checked": leads[leads["Your verdict"] == AUTHOR_UNCHECKED],
-            "All name matches": t}[show]
-    if view.empty:
-        st.info("Nothing to show here." if show != "Not yet checked" else "All flagged authors are checked ✓")
+    leads = t[t["Flagged lead"]] if not t.empty else t
+    if leads.empty:
+        st.success("None of the first or last authors has other retractions for research-integrity reasons.")
     else:
-        st.caption("Set your verdict directly in the table. It is saved immediately and included in the Excel export "
-                   "(Authors sheet).")
-        cols = ["key", "Your verdict", "Note", "Author", "Studies in your review", "Other retractions/EoCs",
-                "Integrity-related", "Match"]
-        edited = st.data_editor(
-            view[cols], hide_index=True, width="stretch", key=f"authors_{show}",
-            disabled=["key", "Author", "Studies in your review", "Other retractions/EoCs", "Integrity-related", "Match"],
-            column_config={
-                "key": None,
-                "Your verdict": st.column_config.SelectboxColumn(options=AUTHOR_VERDICTS, required=True, width="medium"),
-                "Note": st.column_config.TextColumn(width="medium"),
-                "Studies in your review": st.column_config.TextColumn(width="medium"),
-            })
-        for _, r in edited.iterrows():
-            cur = a.author_reviews.get(r["key"], {})
-            new = {"verdict": r["Your verdict"] or AUTHOR_UNCHECKED, "note": r["Note"] or ""}
-            if new != {"verdict": cur.get("verdict", AUTHOR_UNCHECKED), "note": cur.get("note", "")}:
-                a.author_reviews[r["key"]] = new
+        done = int((leads["Your verdict"] != AUTHOR_UNCHECKED).sum())
+        st.progress(done / len(leads), text=f"**{done} of {len(leads)} authors checked**"
+                                            + (" ✓" if done == len(leads) else ""))
+        st.caption("How to check: open one or two of the other papers. Same field, same institution, shared "
+                   "co-authors? Then it is the same person. “Different person” removes the warning from their studies.")
+        for _, r in leads.iterrows():
+            papers = r["_papers"]
+            n, n_int = len(papers), int(r["Integrity-related"])
+            with st.container(border=True):
+                verdict = r["Your verdict"]
+                import re as _re
+                roles = []
+                for x in r["Studies in your review"].split("; "):
+                    m = _re.match(r"\S+ (.*) \((first|last) author\)$", x)
+                    roles.append(f"{m.group(2)} author of *{m.group(1)}*" if m else x)
+                head = f"**{r['Author']}** — " + "; ".join(roles)
+                st.markdown(head)
+                st.markdown(f"Has **{n} other retracted paper{'s' if n != 1 else ''} or concern{'s' if n != 1 else ''}**"
+                            f" ({n_int} for research-integrity reasons, e.g. unreliable data, misconduct or paper "
+                            f"mills). {WHY_SAME.get(r['Match'], '')}")
+                with st.expander(f"Show the {n} paper{'s' if n != 1 else ''}"):
+                    _papers_table(papers)
+                    st.markdown(_author_links(r["Author"]))
+                st.markdown("**Is this the same person?**")
+                c1, c2, c3, c4 = st.columns([1, 1, 1, 3])
+                for col, (label, v) in zip((c1, c2, c3), [("Same person", "Same person"),
+                                                          ("Different person", "Different person"),
+                                                          ("Not sure", "Unsure")]):
+                    col.button(("✓ " if verdict == v else "") + label, key=f"av|{r['key']}|{v}", width="stretch",
+                               type="primary" if verdict == v else "secondary",
+                               on_click=_set_author_verdict, args=(r["key"], v))
+                c4.text_input("Note", value=r["Note"], key=f"anote|{r['key']}", label_visibility="collapsed",
+                              placeholder="Note (optional)", on_change=_set_author_note, args=(r["key"],))
 
-    st.markdown("#### Details")
-    names = list(view["key"]) if not view.empty else list(t["key"])
-    lab = dict(zip(t["key"], t["Author"]))
-    pick = st.selectbox("Author", names, format_func=lambda k: lab[k], key="author_pick")
-    row = t[t["key"] == pick].iloc[0]
-    st.markdown(f"**{row['Author']}** · match: *{row['Match']}* · your verdict: **{row['Your verdict']}**")
-    st.markdown(_author_links(row["Author"]))
-    st.markdown("**Included studies:** " + row["Studies in your review"])
-    papers = pd.DataFrame([{"Other paper": p["title"], "Notice": p["nature"], "Date": str(p["date"] or "")[:10],
-                            "Integrity-related": "Yes" if p["integrity"] else "No",
-                            "Shares a co-author with your study": "Yes" if p["shared_coauthor"] else "",
-                            "Reasons (Retraction Watch)": "; ".join(p["reasons"]), "Found in": p["source"],
-                            "Link": p.get("notice")} for p in row["_papers"]])
-    st.dataframe(papers, hide_index=True, width="stretch",
-                 column_config={"Link": st.column_config.LinkColumn(display_text="open ↗"),
-                                "Other paper": st.column_config.TextColumn(width="large")})
+    others = t[~t["Flagged lead"]] if not t.empty else t
+    if not others.empty:
+        with st.expander(f"Possible namesakes ({len(others)}): same name only, not flagged"):
+            st.caption("These authors share a name with someone who has a retracted paper, but nothing else links "
+                       "them (no shared co-authors), so they are often different people. They don't flag any study. "
+                       "If you know one is the same person, mark it, and the warning is added to their studies.")
+            for _, r in others.iterrows():
+                st.markdown(f"**{r['Author']}** — {r['Studies in your review']} · "
+                            f"{len(r['_papers'])} paper(s) under this name")
+                c1, c2, _ = st.columns([1, 1, 4])
+                for col, (label, v) in zip((c1, c2), [("Same person", "Same person"), ("Different person", "Different person")]):
+                    col.button(("✓ " if r["Your verdict"] == v else "") + label, key=f"av|{r['key']}|{v}",
+                               width="stretch", type="primary" if r["Your verdict"] == v else "secondary",
+                               on_click=_set_author_verdict, args=(r["key"], v))
+                with st.expander("Show the papers"):
+                    _papers_table(r["_papers"])
 
 
 # =====================================================================================
