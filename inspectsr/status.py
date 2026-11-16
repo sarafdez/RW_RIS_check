@@ -34,6 +34,9 @@ KEEP = "Confirmed – keep"
 FALSE_MATCH = "False match – ignore"
 NOT_SELECTED = "Not reviewed (not selected)"
 DECISIONS = [NOT_YET, EXCLUDE, KEEP, FALSE_MATCH]
+# Reviewer's verdict per author (Authors page)
+AUTHOR_UNCHECKED, AUTHOR_SAME, AUTHOR_DIFFERENT, AUTHOR_UNSURE = "Not checked", "Same person", "Different person", "Unsure"
+AUTHOR_VERDICTS = [AUTHOR_UNCHECKED, AUTHOR_SAME, AUTHOR_DIFFERENT, AUTHOR_UNSURE]
 OUTCOMES = [EXCLUDE, KEEP, FALSE_MATCH, NOT_YET, NOT_SELECTED]
 # Flagged studies with these statuses are put in the review queue by default; the reviewer can change it.
 DEFAULT_REVIEW = {"Retracted", "Retracted and replaced", "Expression of concern", "Possible match", "Not a study record"}
@@ -141,7 +144,7 @@ def _add(n: Notice, e):
         n.note = n.note or note
 
 
-def flags(s: Study, results: dict[str, CheckResult]) -> list[Flag]:
+def flags(s: Study, results: dict[str, CheckResult], author_reviews: Optional[dict] = None) -> list[Flag]:
     out: list[Flag] = []
     ns = notices(results)
 
@@ -186,7 +189,26 @@ def flags(s: Study, results: dict[str, CheckResult]) -> list[Flag]:
         out.append(Flag("Possible match", f"A similar title has a {kinds} in Retraction Watch, but DOI, author or year "
                         "do not confirm it is the same paper. Compare the two records.", "1.1"))
     r13 = results.get("1.3")
-    if r13 and r13.proposed == Answer.YES:
+    if r13 and r13.data.get("authors") is not None:
+        reviews = author_reviews or {}
+        lines = []
+        for au in r13.data["authors"]:
+            verdict = (reviews.get(au["key"]) or {}).get("verdict", AUTHOR_UNCHECKED)
+            uniq = {(p.get("doi") or p.get("title") or "").lower(): p for p in au["papers"]}
+            n_int = sum(p["integrity"] for p in uniq.values())
+            if au["strong"] and verdict != AUTHOR_DIFFERENT:
+                state = " (you confirmed it is the same person)" if verdict == AUTHOR_SAME else ""
+                lines.append(f"{au['name']} ({au['role']}) has {n_int} other integrity-related retraction(s), "
+                             f"matched by {au['match']}{state}.")
+            elif not au["strong"] and verdict == AUTHOR_SAME and n_int:
+                lines.append(f"{au['name']} ({au['role']}) has {n_int} other integrity-related retraction(s): "
+                             "you confirmed it is the same person.")
+        if lines:
+            unconfirmed = any("you confirmed" not in l for l in lines)
+            out.append(Flag("Authors' other retractions",
+                            " ".join(lines) + (" Check it is the same person on the Authors page." if unconfirmed else ""),
+                            "1.3"))
+    elif r13 and r13.proposed == Answer.YES:
         trig = r13.data.get("triggers") or ["The first or last author has other retracted papers."]
         out.append(Flag("Authors' other retractions", " ".join(trig) + " Check it is the same person.", "1.3"))
     r22 = results.get("2.2")
@@ -198,8 +220,9 @@ def flags(s: Study, results: dict[str, CheckResult]) -> list[Flag]:
     return sorted(out, key=lambda f: ORDER[f.status])
 
 
-def study_status(s: Study, results: dict[str, CheckResult], decision: Optional[dict] = None) -> tuple[str, list[Flag]]:
-    fl = flags(s, results)
+def study_status(s: Study, results: dict[str, CheckResult], decision: Optional[dict] = None,
+                 author_reviews: Optional[dict] = None) -> tuple[str, list[Flag]]:
+    fl = flags(s, results, author_reviews)
     if decision and decision.get("decision") == FALSE_MATCH:
         return NONE, fl
     return (fl[0].status if fl else NONE), fl

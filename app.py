@@ -15,12 +15,13 @@ from inspectsr.assessment import CHECK_LABELS, Assessment, build
 from inspectsr.models import Answer, Study
 from inspectsr.sources import retraction_watch as rwmod
 from inspectsr.sources.registries import registry_url
-from inspectsr.status import DECISIONS, NOT_SELECTED, NOT_YET, STATUS_INFO, group
+from inspectsr.status import (AUTHOR_UNCHECKED, AUTHOR_VERDICTS, DECISIONS, NOT_SELECTED, NOT_YET, STATUS_INFO,
+                              group)
 
 st.set_page_config(page_title="Retraction Watch check", page_icon="🔎", layout="wide")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Final overview & export",
+PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Authors", "5 · Final overview & export",
          "Explore Retraction Watch"]
 
 st.markdown("""
@@ -594,6 +595,95 @@ def _evidence_df(r) -> pd.DataFrame:
 
 
 # =====================================================================================
+# 4. AUTHORS
+# =====================================================================================
+
+def _author_links(name: str) -> str:
+    from urllib.parse import quote_plus
+    from inspectsr.normalize import split_name
+    fam, given = split_name(name)
+    initials = "".join(w[0] for w in given.replace("-", " ").split() if w)
+    pm = quote_plus(f"{fam} {initials}[Author]")
+    full = quote_plus(f"{given} {fam}".strip())
+    return (f"[PubMed author search ↗](https://pubmed.ncbi.nlm.nih.gov/?term={pm}) · "
+            f"[ORCID search ↗](https://orcid.org/orcid-search/search?searchQuery={full}) · "
+            f"[Google Scholar ↗](https://scholar.google.com/scholar?q=author%3A%22{full}%22)")
+
+
+def page_authors():
+    a = need_assessment()
+    if not a:
+        return
+    st.title("Authors' other retractions")
+    st.markdown(
+        "The **first and last author** of every included study are looked up in Retraction Watch (and OpenAlex in "
+        "the Extended check). One row per **person**: if an author appears in several of your studies, you check "
+        "them once. Your verdict applies to all their studies.")
+    t = a.authors_table()
+    if t.empty:
+        st.success("None of the first or last authors has other retractions or expressions of concern.")
+        return
+    leads = t[t["Flagged lead"]]
+    checked = int((leads["Your verdict"] != AUTHOR_UNCHECKED).sum())
+    if len(leads):
+        st.progress(checked / len(leads), text=f"**Checked {checked} of {len(leads)} flagged authors**"
+                                               + (" · all done ✓" if checked == len(leads) else ""))
+    with st.expander("How to check an author (about a minute each)"):
+        st.markdown(
+            "1. Open one of the author's **other retracted papers** (links below) and compare with your study: "
+            "same **field**, same **institution/country**, overlapping **co-authors**?\n"
+            "2. If unsure, use the **PubMed / ORCID / Google Scholar** links to see the author's publication list.\n"
+            "3. Set **Your verdict**. *Different person* removes the flag from their studies; *Same person* keeps it "
+            "(and adds it for name-only matches with integrity-related retractions).\n\n"
+            "**Flagged leads** are already strong matches: the same OpenAlex author ID, or a retracted paper that shares a "
+            "co-author with your study. **Name-only matches** are often namesakes; they don't flag anything unless you "
+            "confirm them.")
+
+    show = st.radio("Show", ["Flagged leads", "Not yet checked", "All name matches"], horizontal=True,
+                    label_visibility="collapsed")
+    view = {"Flagged leads": leads, "Not yet checked": leads[leads["Your verdict"] == AUTHOR_UNCHECKED],
+            "All name matches": t}[show]
+    if view.empty:
+        st.info("Nothing to show here." if show != "Not yet checked" else "All flagged authors are checked ✓")
+    else:
+        st.caption("Set your verdict directly in the table. It is saved immediately and included in the Excel export "
+                   "(Authors sheet).")
+        cols = ["key", "Your verdict", "Note", "Author", "Studies in your review", "Other retractions/EoCs",
+                "Integrity-related", "Match"]
+        edited = st.data_editor(
+            view[cols], hide_index=True, width="stretch", key=f"authors_{show}",
+            disabled=["key", "Author", "Studies in your review", "Other retractions/EoCs", "Integrity-related", "Match"],
+            column_config={
+                "key": None,
+                "Your verdict": st.column_config.SelectboxColumn(options=AUTHOR_VERDICTS, required=True, width="medium"),
+                "Note": st.column_config.TextColumn(width="medium"),
+                "Studies in your review": st.column_config.TextColumn(width="medium"),
+            })
+        for _, r in edited.iterrows():
+            cur = a.author_reviews.get(r["key"], {})
+            new = {"verdict": r["Your verdict"] or AUTHOR_UNCHECKED, "note": r["Note"] or ""}
+            if new != {"verdict": cur.get("verdict", AUTHOR_UNCHECKED), "note": cur.get("note", "")}:
+                a.author_reviews[r["key"]] = new
+
+    st.markdown("#### Details")
+    names = list(view["key"]) if not view.empty else list(t["key"])
+    lab = dict(zip(t["key"], t["Author"]))
+    pick = st.selectbox("Author", names, format_func=lambda k: lab[k], key="author_pick")
+    row = t[t["key"] == pick].iloc[0]
+    st.markdown(f"**{row['Author']}** · match: *{row['Match']}* · your verdict: **{row['Your verdict']}**")
+    st.markdown(_author_links(row["Author"]))
+    st.markdown("**Included studies:** " + row["Studies in your review"])
+    papers = pd.DataFrame([{"Other paper": p["title"], "Notice": p["nature"], "Date": str(p["date"] or "")[:10],
+                            "Integrity-related": "Yes" if p["integrity"] else "No",
+                            "Shares a co-author with your study": "Yes" if p["shared_coauthor"] else "",
+                            "Reasons (Retraction Watch)": "; ".join(p["reasons"]), "Found in": p["source"],
+                            "Link": p.get("notice")} for p in row["_papers"]])
+    st.dataframe(papers, hide_index=True, width="stretch",
+                 column_config={"Link": st.column_config.LinkColumn(display_text="open ↗"),
+                                "Other paper": st.column_config.TextColumn(width="large")})
+
+
+# =====================================================================================
 # NOTICE FIGURES (shown on the final overview page)
 # =====================================================================================
 
@@ -792,6 +882,7 @@ def page_explore():
     PAGES[0]: page_input,
     PAGES[1]: page_overview,
     PAGES[2]: page_flagged,
-    PAGES[3]: page_export,
-    PAGES[4]: page_explore,
+    PAGES[3]: page_authors,
+    PAGES[4]: page_export,
+    PAGES[5]: page_explore,
 }[page]()

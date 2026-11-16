@@ -27,7 +27,9 @@ The first run downloads the Retraction Watch database (~70 MB, Crossref open dat
    - registration timing;
    - the research team's other retractions;
    - all evidence.
-5. **Export & methods**: an Excel workbook (Summary, Judgements, Checks, Evidence, Provenance, Methods text), a CSV
+5. **Authors**: one row per first/last author with other retractions or expressions of concern. Set
+   *Same person / Different person / Unsure*; "Different person" removes the flag from their studies.
+6. **Final overview & export**: an Excel workbook (Summary, Judgements, Checks, Evidence, Provenance, Methods text), a CSV
    summary and draft methods text.
 6. **Explore Retraction Watch**: filter the database by notice type, year, field, article type, country,
    integrity-related reasons or free text. Shows:

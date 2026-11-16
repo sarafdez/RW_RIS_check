@@ -203,6 +203,13 @@ def check_1_2(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
 
 # ---- 1.3 Other studies by the research team -------------------------------------------
 
+def author_key(name: str) -> str:
+    """One key per person-name, shared by "Schietroma, Mario" and "Mario Schietroma"."""
+    from .normalize import author_keys
+    k = author_keys(name or "")
+    return k.get("full") or k.get("initial") or (name or "").strip().lower()
+
+
 def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     if not s.authors:
         return CheckResult("1.3", Answer.UNCLEAR, "No author names available, so this could not be checked.", [], True)
@@ -210,6 +217,13 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     strong, weak = 0, 0
     lines, triggers = [], []
     from .normalize import author_keys
+    people: dict[str, dict] = {}  # structured findings per author, for the Authors review page
+
+    def person(name: str, role: str) -> dict:
+        k = author_key(name)
+        if k not in people:
+            people[k] = {"key": k, "name": name, "role": role, "match": "", "strong": False, "papers": []}
+        return people[k]
 
     def _key(name: str) -> str | None:
         return author_keys(name).get("full")  # full first names only: initials are too common to prove identity
@@ -240,6 +254,16 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         else:
             weak += 1
         role = "first author" if name == s.first_author else "last author"
+        p = person(name, role)
+        p["strong"] = p["strong"] or (specific and bool(shared))
+        p["match"] = "shared co-author" if (specific and shared) else f"name only ({hit['specificity']})"
+        shared_ids = {id(r) for r in shared}
+        for r in recs:
+            p["papers"].append({"title": r["title"], "nature": r["nature"], "date": r["notice_date"],
+                                "reasons": r["reasons"], "integrity": any(integrity_related(x) for x in r["reasons"]),
+                                "shared_coauthor": id(r) in shared_ids, "doi": r["paper_doi"],
+                                "notice": DOI.format(r["notice_doi"]) if r["notice_doi"] else None,
+                                "source": "Retraction Watch"})
         lines.append(f"{name} ({role}): {len(recs)} retraction/EoC record(s) in Retraction Watch matched by "
                      f"{hit['specificity']}; {len(integ)} with integrity-related reasons"
                      + (f", {len(shared)} sharing a co-author with this study." if shared else "."))
@@ -261,6 +285,18 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
             w = {**w, "reasons": reasons, "integrity": any(integrity_related(x) for x in reasons)}
             integ_works.append(w)
         n_int = sum(w["integrity"] for w in integ_works)
+        p = person(name, "first author" if author_key(name) == author_key(s.first_author or "") else "last author")
+        known = {x["doi"] for x in p["papers"] if x.get("doi")}
+        for w in integ_works:
+            if w.get("doi") in known:
+                continue
+            p["papers"].append({"title": w.get("title"), "nature": "Retraction", "date": str(w.get("year") or ""),
+                                "reasons": w["reasons"], "integrity": w["integrity"], "shared_coauthor": False,
+                                "doi": w.get("doi"), "notice": DOI.format(w["doi"]) if w.get("doi") else w.get("openalex"),
+                                "source": "OpenAlex"})
+        if n_int:
+            p["strong"] = True
+            p["match"] = "same OpenAlex author ID"
         if n_int:
             oa_hits += 1
             triggers.append(f"{name} has {n_int} other integrity-related retraction(s) (same OpenAlex author ID).")
@@ -275,11 +311,12 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         return CheckResult("1.3", Answer.YES,
                            " ".join(lines) + " Confirm that these are the same people and read the notices: a retraction "
                            "for honest error may not warrant concern.", ev, needs_review=True,
-                           data={"triggers": triggers})
+                           data={"triggers": triggers, "authors": list(people.values())})
     if weak:
         return CheckResult("1.3", Answer.UNCLEAR,
                            " ".join(lines) + " Matches are by name only (possibly other people with the same name) "
-                           "or not integrity-related, so the study is not flagged.", ev, needs_review=False)
+                           "or not integrity-related, so the study is not flagged.", ev, needs_review=False,
+                           data={"authors": list(people.values())})
     checked = ", ".join(d.author_rw.keys())
     return CheckResult("1.3", Answer.NO,
                        f"No retractions or expressions of concern found for first/last author ({checked}). "

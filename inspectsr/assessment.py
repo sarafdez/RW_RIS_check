@@ -31,6 +31,7 @@ class Assessment:
     settings: dict = field(default_factory=dict)
     decisions: dict = field(default_factory=dict)   # uid -> {"decision": one of DECISIONS, "note": str}
     review_set: dict = field(default_factory=dict)  # uid -> bool: reviewer's choice of which flagged studies to review
+    author_reviews: dict = field(default_factory=dict)  # author key -> {"verdict": ..., "note": ...}
     # Flags depend only on the automated results, which never change after the run: cache them.
     _raw: dict = field(default_factory=dict, repr=False)
     _flagged: Optional[list] = field(default=None, repr=False)
@@ -41,7 +42,7 @@ class Assessment:
         return self._by_uid[uid]
 
     def status(self, uid: str) -> tuple[str, list[Flag]]:
-        return study_status(self.study(uid), self.results[uid], self.decisions.get(uid))
+        return study_status(self.study(uid), self.results[uid], self.decisions.get(uid), self.author_reviews)
 
     def notices(self, uid: str) -> list[Notice]:
         return notices(self.results[uid])
@@ -83,6 +84,47 @@ class Assessment:
         if not self.selected(uid):
             return NOT_SELECTED
         return self.decision(uid)
+
+    # ---- authors -------------------------------------------------------------------
+    def authors_table(self) -> pd.DataFrame:
+        """One row per author (first/last authors of included studies) with other retractions or concerns."""
+        from .status import AUTHOR_UNCHECKED
+        rank = {"same OpenAlex author ID": 0, "shared co-author": 1, "name only (full name)": 2,
+                "name only (surname + initial)": 3}
+        agg: dict[str, dict] = {}
+        for s in self.studies:
+            r13 = self.results[s.uid].get("1.3")
+            for au in (r13.data.get("authors") or []) if r13 else []:
+                a = agg.setdefault(au["key"], {"key": au["key"], "name": au["name"], "studies": [], "uids": [],
+                                                "papers": {}, "match": au["match"], "strong": False})
+                if "," in au["name"] and "," not in a["name"]:
+                    a["name"] = au["name"]  # prefer "Family, Given"
+                if s.uid not in a["uids"]:
+                    a["uids"].append(s.uid)
+                    a["studies"].append(f"{s.uid} {s.label} ({au['role']})")
+                a["strong"] = a["strong"] or au["strong"]
+                if rank.get(au["match"], 9) < rank.get(a["match"], 9):
+                    a["match"] = au["match"]
+                for p in au["papers"]:
+                    a["papers"].setdefault((p.get("doi") or p.get("title") or "").lower(), p)
+        rows = []
+        for a in agg.values():
+            papers = list(a["papers"].values())
+            rev = self.author_reviews.get(a["key"]) or {}
+            rows.append({
+                "key": a["key"], "Author": a["name"], "Flagged lead": a["strong"],
+                "Studies in your review": "; ".join(a["studies"]), "N studies": len(a["uids"]),
+                "Other retractions/EoCs": len(papers), "Integrity-related": sum(p["integrity"] for p in papers),
+                "Match": a["match"], "Your verdict": rev.get("verdict", AUTHOR_UNCHECKED), "Note": rev.get("note", ""),
+                "Other papers": " | ".join(f"{p['title'] or ''} ({p['nature']}, {str(p['date'] or '')[:4]}; "
+                                           f"{'; '.join(p['reasons'][:3])}) {p.get('notice') or ''}" for p in papers),
+                "_papers": papers, "_uids": a["uids"],
+            })
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
+        return df.sort_values(["Flagged lead", "Integrity-related", "Other retractions/EoCs"],
+                              ascending=[False, False, False]).reset_index(drop=True)
 
     # ---- figures ------------------------------------------------------------------
     def outcome_counts(self) -> pd.DataFrame:
@@ -271,6 +313,9 @@ class Assessment:
             sheets = {
                 "Summary": self.summary_table().drop(columns=["Group"]),
                 "Notices": self.notices_table(),
+                "Authors": (lambda t: t.drop(columns=["key", "_papers", "_uids"]) if not t.empty else
+                            pd.DataFrame({"Authors": ["No other retractions found for first or last authors."]}))(
+                    self.authors_table()),
                 "Not identified": self.not_identified_table(),
                 "Checks": self.checks_table(),
                 "Evidence": self.evidence_table(),

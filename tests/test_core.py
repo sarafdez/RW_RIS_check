@@ -380,3 +380,22 @@ def test_notice_merged_into_original_by_title_offline():
     assert [s.uid for s in studies] == ["S002"] and orig.merged_notices[0]["type"] == "Correction"
     rw, d = _run([orig])
     assert study_status(orig, run_checks(orig, d[orig.uid], rw))[0] == "Correction"
+
+
+def test_author_verdict_removes_or_keeps_flag():
+    s = _smith()
+    rw, d = _run([s])
+    a = Assessment([s], {s.uid: run_checks(s, d[s.uid], rw)}, RunInfo(started="t", finished="t"))
+    t = a.authors_table()
+    lead = t[t["Flagged lead"]].iloc[0]
+    assert lead["Author"].startswith("Smith") and lead["Integrity-related"] == 1
+    assert any(f.status == "Authors' other retractions" for f in a.status(s.uid)[1])
+    a.author_reviews[lead["key"]] = {"verdict": "Different person", "note": "namesake"}
+    others = t[t["Flagged lead"] & (t["key"] != lead["key"])]
+    if len(others):  # the co-author is also a lead: the flag stays until every lead is ruled out
+        assert any(f.status == "Authors' other retractions" for f in a.status(s.uid)[1])
+        for k in others["key"]:
+            a.author_reviews[k] = {"verdict": "Different person", "note": ""}
+    assert not any(f.status == "Authors' other retractions" for f in a.status(s.uid)[1])
+    a.author_reviews[lead["key"]] = {"verdict": "Same person", "note": ""}
+    assert any("you confirmed" in f.why for f in a.status(s.uid)[1])
