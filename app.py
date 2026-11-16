@@ -610,14 +610,25 @@ def page_notices():
         bytype = nt.groupby("Notice")["ID"].nunique().reset_index(name="Records").rename(columns={"Notice": "Item"})
         st.altair_chart(explore._hbar(bytype), width="stretch")
     with c2:
-        st.markdown("#### Reasons given (Retraction Watch)")
-        rs = nt[nt["Notice"] != "Correction"]["Reasons (Retraction Watch)"].str.split("; ").explode()
-        rs = rs[rs.fillna("").str.len() > 0]
-        if rs.empty:
-            st.caption("No reasons recorded.")
+        st.markdown("#### Why were they retracted?")
+        ret_n = nt[nt["Notice"] == "Retraction"][["ID", "Study", "Reasons (Retraction Watch)"]]
+        per = (ret_n.assign(Reason=ret_n["Reasons (Retraction Watch)"].str.split("; ")).explode("Reason")
+               .query("Reason.str.len() > 0", engine="python").drop_duplicates(["ID", "Reason"]))
+        if per.empty:
+            st.caption("No retraction reasons recorded.")
         else:
-            rdf = rs.value_counts().head(10).rename_axis("Item").reset_index(name="Records")
-            st.altair_chart(explore._hbar(rdf), width="stretch")
+            n_st, n_r = per["ID"].nunique(), per["Reason"].nunique()
+            st.caption(f"Retraction Watch lists several reasons per retraction, so {n_st} retracted "
+                       f"stud{'y' if n_st == 1 else 'ies'} give {n_r} different reasons. Each bar shows how many "
+                       "of the retracted studies have that reason.")
+            rdf = per.groupby("Reason")["ID"].nunique().sort_values(ascending=False).head(12) \
+                .rename_axis("Item").reset_index(name="Studies")
+            st.altair_chart(explore._hbar(rdf, value="Studies", axis_title="Retracted studies"), width="stretch")
+            if n_st <= 10:
+                st.dataframe(per.groupby(["ID", "Study"])["Reason"].apply("; ".join).reset_index()
+                             .drop(columns="ID").rename(columns={"Reason": "Reasons (Retraction Watch)"}),
+                             hide_index=True, width="stretch",
+                             column_config={"Reasons (Retraction Watch)": st.column_config.TextColumn(width="large")})
 
     st.markdown("#### Which sources reported each notice")
     st.caption("Sources differ in coverage and timing, so no single database is enough. "

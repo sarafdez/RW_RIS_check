@@ -55,13 +55,13 @@ def _top(series_of_lists: pd.Series, n: int = 15, exclude: tuple = ()) -> pd.Dat
     return vc.rename_axis("Item").reset_index(name="Records")
 
 
-def _hbar(df: pd.DataFrame, color: str = CAT[0]) -> alt.Chart:
+def _hbar(df: pd.DataFrame, color: str = CAT[0], value: str = "Records", axis_title: str | None = None) -> alt.Chart:
     bars = alt.Chart(df).mark_bar(color=color, cornerRadiusEnd=4).encode(
-        x=alt.X("Records:Q", title=None, axis=alt.Axis(grid=False, format="~s")),
+        x=alt.X(f"{value}:Q", title=axis_title, axis=alt.Axis(grid=False, format="~s", tickMinStep=1)),
         y=alt.Y("Item:N", sort="-x", title=None, axis=alt.Axis(labelLimit=300)),
-        tooltip=["Item", alt.Tooltip("Records:Q", format=",")],
+        tooltip=["Item", alt.Tooltip(f"{value}:Q", format=",")],
     )
-    labels = bars.mark_text(align="left", dx=4, color=INK_MUTED).encode(text=alt.Text("Records:Q", format=","))
+    labels = bars.mark_text(align="left", dx=4, color=INK_MUTED).encode(text=alt.Text(f"{value}:Q", format=","))
     return (bars + labels).properties(height=alt.Step(22), width="container")
 
 
