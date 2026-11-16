@@ -95,6 +95,8 @@ class Study:
     id_method: str = "as supplied"             # how DOI/PMID were obtained
     id_confidence: str = "high"                # high / medium / low / none
     id_notes: list[str] = field(default_factory=list)
+    ris: Optional[dict] = None          # the original RIS record (re-exported unchanged)
+    notice_for: Optional[dict] = None   # if this reference is a notice: the original article (doi, pmid, title, ...)
 
     @property
     def people(self) -> list[str]:

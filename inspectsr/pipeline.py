@@ -480,6 +480,52 @@ def fetch_notice_titles(studies: list[Study], dossiers: dict, rw: RWIndex, progr
         dossiers[s.uid].notice_info = info
 
 
+NOTICE_FOR_REFS = ("ErratumFor", "RetractionOf", "ExpressionOfConcernFor", "CorrectedandRepublishedFrom",
+                   "PartialRetractionOf")
+
+
+def link_notices(studies: list[Study], dossiers: dict, info: RunInfo):
+    """A reference that is itself a notice (corrigendum, retraction notice...) belongs to an original article.
+    If that article is also in the list, merge the notice into it (one study, one decision). Otherwise remember
+    the original's metadata so the cleaned RIS export can replace the notice by the original article."""
+    from .normalize import find_dois
+    by_doi = {s.doi: s for s in studies if s.doi}
+    by_pmid = {s.pmid: s for s in studies if s.pmid}
+    merged = []
+    for s in studies:
+        if s.design != "Notice (not a study)":
+            continue
+        d = dossiers[s.uid]
+        dois = list((d.crossref or {}).get("is_notice_for") or [])
+        pmids = []
+        for link in (d.pubmed or {}).get("links", []):
+            if link["ref_type"] in NOTICE_FOR_REFS:
+                if link["pmid"]:
+                    pmids.append(link["pmid"])
+                dois += find_dois(link["source"] or "")
+        target = next((by_doi[x] for x in dois if x in by_doi and by_doi[x] is not s), None) or \
+            next((by_pmid[x] for x in pmids if x in by_pmid and by_pmid[x] is not s), None)
+        if target:
+            target.id_notes.append(f"Your list also contained a notice for this study ({s.uid}: {s.title}); "
+                                   "it was merged into this study.")
+            info.duplicates.append(f"{s.uid} is a notice for {target.uid} (the original article); merged into {target.uid}.")
+            merged.append(s)
+            continue
+        meta = {"doi": dois[0] if dois else None, "pmid": pmids[0] if pmids else None}
+        if meta["pmid"]:
+            try:
+                rec = pubmed.fetch([meta["pmid"]]).get(meta["pmid"]) or {}
+                meta.update({k: rec.get(k) for k in ("title", "authors", "year", "journal")})
+                meta["doi"] = meta["doi"] or rec.get("doi")
+            except Exception:
+                pass
+        if meta["doi"] or meta["pmid"]:
+            s.notice_for = meta
+    for s in merged:
+        studies.remove(s)
+        dossiers.pop(s.uid, None)
+
+
 def identify_from_rw(studies: list[Study], rw: RWIndex):
     """First pass, local and instant: a reference with no DOI/PMID whose exact title is in Retraction Watch
     (confirmed by first author or year) takes its identifiers from the Retraction Watch record."""
@@ -530,6 +576,8 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
     else:
         for s in studies:
             s.design = detect_design(s.title, s.abstract, s.pub_types)
+    if online:
+        link_notices(studies, dossiers, info)
     match_rw(studies, dossiers, rw, progress)
     if online:
         fetch_notice_titles(studies, dossiers, rw, progress, extended=extended)

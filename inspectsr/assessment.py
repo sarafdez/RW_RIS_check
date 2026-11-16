@@ -214,6 +214,57 @@ class Assessment:
         )
 
     # ---- exports ------------------------------------------------------------------
+    def to_ris(self, drop_excluded: bool = True, replace_notices: bool = True, add_notes: bool = True
+               ) -> tuple[str, dict]:
+        """Cleaned reference list. Records that came from a RIS file are written back with all their fields."""
+        import re
+        import rispy
+        from .status import EXCLUDE
+        list_keys = {rispy.TAG_KEY_MAPPING[t] for t in rispy.LIST_TYPE_TAGS if t in rispy.TAG_KEY_MAPPING}
+        out, stats = [], {"written": 0, "excluded": 0, "replaced": 0}
+        for s in self.studies:
+            dec = self.final_decision(s.uid)
+            if drop_excluded and dec == EXCLUDE:
+                stats["excluded"] += 1
+                continue
+            replaced = replace_notices and bool(s.notice_for)
+            if replaced:
+                m = s.notice_for
+                rec = {"type_of_reference": "JOUR", "title": m.get("title"), "authors": m.get("authors"),
+                       "year": str(m["year"]) if m.get("year") else None, "journal_name": m.get("journal"),
+                       "doi": m.get("doi"), "accession_number": m.get("pmid")}
+                stats["replaced"] += 1
+            elif s.ris:
+                rec = dict(s.ris)
+            else:
+                rec = {"type_of_reference": "JOUR", "title": s.title, "authors": s.authors,
+                       "year": str(s.year) if s.year else None, "journal_name": s.journal, "doi": s.doi,
+                       "accession_number": s.pmid}
+            rec = {k: v for k, v in rec.items() if v not in (None, "", [])}
+            for k in list(rec):
+                if k in list_keys and isinstance(rec[k], str):
+                    rec[k] = [rec[k]]
+            notes = list(rec.get("notes", []))
+            if replaced:
+                notes.append(f"Retraction check: replaces the notice that was in the list "
+                             f"(\"{s.title}\"{', doi ' + s.doi if s.doi else ''}).")
+            if add_notes:
+                status, _ = self.status(s.uid)
+                line = f"Retraction check {self.run.finished[:10]}: {status}"
+                if dec:
+                    line += f"; decision: {dec}"
+                note = (self.decisions.get(s.uid) or {}).get("note")
+                if note:
+                    line += f"; note: {note}"
+                notes.append(line)
+            if notes:
+                rec["notes"] = notes
+            out.append(rec)
+            stats["written"] += 1
+        text = rispy.dumps(out, skip_unknown_tags=False)
+        text = re.sub(r"(?m)^\d+\.\n", "", text)  # rispy numbers records; reference managers don't need it
+        return text, stats
+
     def to_excel(self) -> bytes:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:

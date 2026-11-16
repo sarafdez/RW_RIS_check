@@ -329,3 +329,25 @@ def test_notice_in_reference_list_gets_notice_status():
     assert status == "Correction" and "notice itself" in fl[0].why
     s2 = Study("S002", title="Retraction: A trial of something", design="Notice (not a study)")
     assert study_status(s2, {"1.1": check_1_1(s2, Dossier(), _rw())})[0] == "Retracted"
+
+
+def test_cleaned_ris_export_keeps_fields_drops_excluded_and_replaces_notices():
+    import rispy
+    ris = ("TY  - JOUR\nAU  - Smith, John\nTI  - Effect of drug X on outcome Y: a randomised trial\nPY  - 2019\n"
+           "DO  - 10.1234/abc.2019.1\nKW  - keyword one\nAB  - An abstract that must survive.\nER  - \n\n"
+           "TY  - JOUR\nTI  - Corrigendum: Another study title that is long enough\nPY  - 2020\n"
+           "DO  - 10.5555/corr.1\nER  - \n")
+    studies, _ = inputs.parse_upload("x.ris", ris.encode())
+    inputs.assign_ids(studies)
+    rw, d = _run(studies)
+    studies[1].notice_for = {"doi": "10.5555/orig.1", "title": "Another study title that is long enough",
+                             "authors": ["Roe, R"], "year": 2020}
+    a = Assessment(studies, {s.uid: run_checks(s, d[s.uid], rw) for s in studies}, RunInfo(started="t", finished="2026-01-01"))
+    text, stats = a.to_ris(drop_excluded=True, replace_notices=True)
+    recs = rispy.loads(text)
+    assert stats == {"written": 2, "excluded": 0, "replaced": 1}
+    assert recs[0]["keywords"] == ["keyword one"] and "survive" in recs[0]["abstract"]
+    assert recs[1]["doi"] == "10.5555/orig.1" and any("replaces the notice" in n for n in recs[1]["notes"])
+    a.decisions[studies[0].uid] = {"decision": "Confirmed – exclude", "note": ""}
+    text, stats = a.to_ris(drop_excluded=True)
+    assert stats["excluded"] == 1 and stats["written"] == 1

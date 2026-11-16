@@ -739,6 +739,29 @@ def page_export():
                        width="stretch")
     d2.download_button("⬇ Summary (CSV)", a.summary_table().drop(columns=["Group"]).to_csv(index=False),
                        f"retraction-check_summary_{stamp}.csv", mime="text/csv", width="stretch")
+    st.markdown("#### Cleaned reference list (RIS)")
+    st.caption("A RIS file to import back into EndNote, Zotero or Covidence. References that came from a RIS file "
+               "are written back with all their original fields.")
+    r1, r2, r3 = st.columns(3)
+    drop = r1.checkbox("Leave out studies you excluded", value=True)
+    repl = r2.checkbox("Replace notices (e.g. a corrigendum) by the original article", value=True,
+                       help="Only when the original article could be identified. If the original was already in "
+                            "your list, the notice was merged into it during the check.")
+    notes = r3.checkbox("Add the check result and your decision as a note (N1)", value=True)
+    ris_text, rs = a.to_ris(drop_excluded=drop, replace_notices=repl, add_notes=notes)
+    st.download_button(f"⬇ Cleaned RIS ({rs['written']} references)", ris_text.encode("utf-8"),
+                       f"included-studies_checked_{stamp}.ris", mime="application/x-research-info-systems")
+    bits = []
+    if rs["excluded"]:
+        bits.append(f"{rs['excluded']} excluded study(ies) left out")
+    if rs["replaced"]:
+        bits.append(f"{rs['replaced']} notice(s) replaced by the original article")
+    merged = [x for x in a.run.duplicates if "is a notice for" in x]
+    if merged:
+        bits.append(f"{len(merged)} notice(s) merged into their original article during the check")
+    if bits:
+        st.caption(" · ".join(bits) + ".")
+
     st.markdown("#### Draft methods text")
     st.code(a.methods_text(), language=None, wrap_lines=True)
     with st.expander("Provenance (database versions and query dates)"):

@@ -130,6 +130,7 @@ def parse_ris(text: str, name: str) -> list[Study]:
             abstract=_first(r.get("abstract")),
             pub_date=iso(_first(r.get("date"), r.get("publication_year"), r.get("year"))),
         )
+        s.ris = {k: v for k, v in r.items() if k != "id"}
         out.append(finalize(s))
     return out
 
