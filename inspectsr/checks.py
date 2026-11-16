@@ -7,6 +7,7 @@ To add a check: write a function `(study, dossier, rw) -> CheckResult` and regis
 """
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Callable
 
@@ -77,9 +78,7 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         ev.append(Evidence("OpenAlex", "Retracted (is_retracted)", "", None, oa.get("id"), "doi"))
 
     if s.design == "Notice (not a study)":
-        return CheckResult("1.1", Answer.UNCLEAR, "This record looks like a notice (retraction/correction), "
-                           "not the study itself. Replace it with the original article and re-run.", ev, True,
-                           data={"kind": "notice_record"})
+        return _notice_record(s, d)
     if ev and not (reinstated and len(ev) == sum(e.kind == "Reinstatement" for e in ev)):
         n_src = len({e.source for e in ev})
         if replace:
@@ -104,6 +103,40 @@ def check_1_1(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     return CheckResult("1.1", Answer.NO if s.identified else Answer.UNCLEAR,
                        f"No retraction found in: {srcs}." + _not_identified_note(s) +
                        " Tip: notices can appear late, so repeat the check shortly before finishing the review.", [], needs_review=False, data={"kind": "none"})
+
+
+def _notice_record(s: Study, d: Dossier) -> CheckResult:
+    """The reference in the list is itself a notice (corrigendum, erratum, retraction notice, EoC).
+    That means the study it belongs to has that notice: report it as such, and name the original if known."""
+    title = (s.title or "").lower()
+    pts = {p.lower() for p in s.pub_types}
+    if re.search(r"retract|withdraw", title) or "retraction of publication" in pts:
+        ntype = "Retraction"
+    elif "concern" in title or "expression of concern" in pts:
+        ntype = "Expression of concern"
+    else:
+        ntype = "Correction"
+    original, orig_url = None, None
+    for doi in (d.crossref or {}).get("is_notice_for", []) or []:
+        original, orig_url = f"DOI {doi}", DOI.format(doi)
+        break
+    if not original:
+        for link in (d.pubmed or {}).get("links", []):
+            if link["ref_type"] in ("ErratumFor", "RetractionOf", "ExpressionOfConcernFor", "CorrectedandRepublishedFrom"):
+                original = link["source"] or (f"PMID {link['pmid']}" if link["pmid"] else None)
+                orig_url = pubmed.pubmed_url(link["pmid"]) if link["pmid"] else None
+                break
+    ev = [Evidence("Your reference list", ntype, "The reference itself is the notice", s.pub_date,
+                   DOI.format(s.doi) if s.doi else None, "title", text=s.title or "")]
+    if original:
+        ev.append(Evidence("PubMed" if orig_url and "pubmed" in orig_url else "Crossref", "Original article",
+                           original, None, orig_url, "notice link"))
+    return CheckResult("1.1", Answer.YES if ntype == "Retraction" else Answer.NO,
+                       f"This reference is the {ntype.lower()} notice itself, not the study."
+                       + (f" It belongs to: {original}." if original else ""), ev, True,
+                       suggests_serious=ntype == "Retraction",
+                       data={"kind": "notice_record", "notice_type": ntype, "original": original,
+                             "original_url": orig_url})
 
 
 # ---- 1.2 Expressions of concern and other notices ------------------------------------

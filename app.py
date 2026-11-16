@@ -541,6 +541,8 @@ def _notice_card(n):
                 found.append("✓ Crossref (copy of Retraction Watch)" if only_copy else f"{'✓' if hit else '✗'} Crossref")
             else:
                 found.append(f"{'✓' if src in n.sources else '✗'} {src}")
+        if "Your reference list" in n.sources:
+            found.insert(0, "✓ your reference list (the reference is the notice itself)")
         st.markdown("**Found in:** " + " · ".join(found))
         if n.reasons:
             st.markdown("**Reasons (Retraction Watch):** " + "; ".join(n.reasons))

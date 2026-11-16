@@ -315,3 +315,17 @@ def test_ris_doi_in_unusual_field():
     ris = "TY  - JOUR\nTI  - A trial of something important here\nM3  - doi: 10.5555/abc.123\nER  - \n"
     s = inputs.parse_upload("x.ris", ris.encode())[0][0]
     assert s.doi == "10.5555/abc.123"
+
+
+def test_notice_in_reference_list_gets_notice_status():
+    from inspectsr.pipeline import Dossier
+    s = Study("S001", title="Corrigendum: Estimating the beginning of pregnancy in claims data", year=2020,
+              doi="10.3389/fpubh.2020.605076", design="Notice (not a study)")
+    d = Dossier(pubmed={"links": [{"ref_type": "ErratumFor", "source": "Front Public Health. 2020;8:350.",
+                                   "pmid": "123", "year": 2020}]})
+    r = check_1_1(s, d, _rw())
+    assert r.data["notice_type"] == "Correction" and "350" in r.data["original"]
+    status, fl = study_status(s, {"1.1": r})
+    assert status == "Correction" and "notice itself" in fl[0].why
+    s2 = Study("S002", title="Retraction: A trial of something", design="Notice (not a study)")
+    assert study_status(s2, {"1.1": check_1_1(s2, Dossier(), _rw())})[0] == "Retracted"

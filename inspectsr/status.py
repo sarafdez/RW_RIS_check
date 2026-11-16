@@ -163,8 +163,13 @@ def flags(s: Study, results: dict[str, CheckResult]) -> list[Flag]:
         out.append(Flag("Retracted and replaced", "Retracted and replaced by a corrected version: check the "
                         "replacement article instead.", "1.1"))
     elif k11 == "notice_record":
-        out.append(Flag("Not a study record", "This reference looks like a retraction or correction notice, not the "
-                        "study itself. Replace it with the original article.", "1.1"))
+        nt = r11.data.get("notice_type", "Correction")
+        status = {"Retraction": "Retracted", "Expression of concern": "Expression of concern"}.get(nt, "Correction")
+        orig = r11.data.get("original")
+        why = (f"This reference is the {nt.lower()} notice itself, not the study"
+               + (f" (it belongs to {orig})" if orig else "") + f", so the study has a {nt.lower()}. "
+               "Consider listing the original article instead.")
+        out.append(Flag(status, why, "1.1"))
     if k12 == "eoc":
         n = first("Expression of concern")
         why = f"Expression of concern{(' ' + n.date[:10]) if n and n.date else ''} ({n.sources_label if n else 'see evidence'})."
