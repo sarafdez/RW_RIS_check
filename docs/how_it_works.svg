@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#898781"/>
+    </marker>
+    <style>
+      .h { font-size: 20px; font-weight: 700; fill: #0b0b0b; }
+      .sub { font-size: 14px; fill: #52514e; }
+      .t { font-size: 15px; fill: #0b0b0b; }
+      .tb { font-size: 15px; font-weight: 700; fill: #0b0b0b; }
+      .s { font-size: 13px; fill: #52514e; }
+      .w { font-size: 14px; font-weight: 700; fill: #ffffff; }
+      .wd { font-size: 14px; font-weight: 700; fill: #0b0b0b; }
+      .panel { fill: #f6f6f3; stroke: #e1e0d9; stroke-width: 1.5; }
+      .box { fill: #ffffff; stroke: #c3c2b7; stroke-width: 1.5; }
+      .rw { fill: #eaf2fc; stroke: #2a78d6; stroke-width: 2; }
+      .ext { fill: #ffffff; stroke: #898781; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .num { fill: #2a78d6; }
+      .arrow { stroke: #898781; stroke-width: 2.5; fill: none; marker-end: url(#ah); }
+      .thin { stroke: #c3c2b7; stroke-width: 2; fill: none; marker-end: url(#ah); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="48" y="58" font-size="32" font-weight="700" fill="#0b0b0b">How the Retraction Watch check works</text>
+  <text x="48" y="90" class="sub" font-size="17">From a list of included studies to a documented decision for every flagged study</text>
+
+  <!-- ============ Column panels ============ -->
+  <rect x="40"   y="115" width="272" height="585" rx="14" class="panel"/>
+  <rect x="352"  y="115" width="272" height="585" rx="14" class="panel"/>
+  <rect x="664"  y="115" width="272" height="585" rx="14" class="panel"/>
+  <rect x="976"  y="115" width="272" height="585" rx="14" class="panel"/>
+  <rect x="1288" y="115" width="272" height="585" rx="14" class="panel"/>
+
+  <!-- arrows between columns -->
+  <path d="M314 400 L348 400" class="arrow"/>
+  <path d="M626 400 L660 400" class="arrow"/>
+  <path d="M938 400 L972 400" class="arrow"/>
+  <path d="M1250 400 L1284 400" class="arrow"/>
+
+  <!-- ============ 1. Upload ============ -->
+  <circle cx="72" cy="150" r="17" class="num"/><text x="72" y="156" text-anchor="middle" class="w" font-size="17">1</text>
+  <text x="98" y="157" class="h">Upload</text>
+  <text x="58" y="190" class="sub">The studies included in your review</text>
+
+  <rect x="58" y="208" width="236" height="168" rx="10" class="box"/>
+  <text x="74" y="236" class="tb">Any common format</text>
+  <text x="74" y="264" class="t">• RIS (EndNote, Zotero,</text>
+  <text x="74" y="284" class="t">   Covidence…)</text>
+  <text x="74" y="306" class="t">• PubMed .nbib · BibTeX</text>
+  <text x="74" y="328" class="t">• CSV / Excel · Word · PDF</text>
+  <text x="74" y="350" class="t">• Pasted text, DOIs or PMIDs</text>
+
+  <path d="M176 380 L176 412" class="thin"/>
+
+  <rect x="58" y="416" width="236" height="128" rx="10" class="box"/>
+  <text x="74" y="444" class="tb">Read the references</text>
+  <text x="74" y="470" class="t">• Merge duplicates across files</text>
+  <text x="74" y="492" class="t">• Untick records that are not</text>
+  <text x="74" y="512" class="t">   included studies</text>
+  <text x="74" y="534" class="s">• Fix a DOI or title if needed</text>
+
+  <rect x="58" y="562" width="236" height="118" rx="10" fill="#fbf7ea" stroke="#eda100" stroke-width="1.5"/>
+  <text x="74" y="590" class="tb">Choose a check type</text>
+  <text x="74" y="614" class="t">Quick · Standard · Extended</text>
+  <text x="74" y="636" class="s">How many online sources to use</text>
+  <text x="74" y="656" class="s">(see the bar at the bottom)</text>
+
+  <!-- ============ 2. Identify ============ -->
+  <circle cx="384" cy="150" r="17" class="num"/><text x="384" y="156" text-anchor="middle" class="w" font-size="17">2</text>
+  <text x="410" y="157" class="h">Identify each study</text>
+  <text x="370" y="190" class="sub">Find its DOI / PubMed ID.</text>
+  <text x="370" y="208" class="sub">Steps in order; stops at the first hit.</text>
+
+  <rect x="370" y="226" width="236" height="64" rx="10" class="box"/>
+  <text x="386" y="252" class="tb">a  DOI or PMID in your file</text>
+  <text x="386" y="275" class="s">   fastest and most reliable</text>
+  <path d="M488 292 L488 310" class="thin"/>
+
+  <rect x="370" y="314" width="236" height="64" rx="10" class="rw"/>
+  <text x="386" y="340" class="tb">b  Exact title in</text>
+  <text x="386" y="361" class="tb">    Retraction Watch</text>
+  <path d="M488 380 L488 398" class="thin"/>
+
+  <rect x="370" y="402" width="236" height="64" rx="10" class="box"/>
+  <text x="386" y="428" class="tb">c  Title search in PubMed</text>
+  <text x="386" y="451" class="s">   about 10 titles per request</text>
+  <path d="M488 468 L488 486" class="thin"/>
+
+  <rect x="370" y="490" width="236" height="64" rx="10" class="ext"/>
+  <text x="386" y="516" class="tb">d  Title search in OpenAlex</text>
+  <text x="386" y="539" class="s">   Extended only</text>
+  <path d="M488 556 L488 574" class="thin"/>
+
+  <rect x="370" y="578" width="236" height="102" rx="10" fill="#efefec" stroke="#c3c2b7" stroke-width="1.5"/>
+  <text x="386" y="604" class="tb">Not found anywhere</text>
+  <text x="386" y="628" class="t">Still checked against</text>
+  <text x="386" y="648" class="t">Retraction Watch by title</text>
+  <text x="386" y="668" class="s">(exact and similar titles)</text>
+
+  <!-- ============ 3. Check ============ -->
+  <circle cx="696" cy="150" r="17" class="num"/><text x="696" y="156" text-anchor="middle" class="w" font-size="17">3</text>
+  <text x="722" y="157" class="h">Check every study</text>
+  <text x="682" y="190" class="sub">Retraction Watch first, online sources</text>
+  <text x="682" y="208" class="sub">mainly for what it cannot match</text>
+
+  <rect x="682" y="226" width="236" height="142" rx="10" class="rw"/>
+  <text x="698" y="254" class="tb">Retraction Watch</text>
+  <text x="698" y="276" class="t">~74,000 notices, local copy</text>
+  <text x="698" y="304" class="s">Match by DOI · PubMed ID ·</text>
+  <text x="698" y="324" class="s">exact title · similar title</text>
+  <text x="698" y="352" class="s">Also: authors' other retractions</text>
+
+  <rect x="682" y="380" width="236" height="104" rx="10" class="box"/>
+  <text x="698" y="406" class="tb">PubMed · ClinicalTrials.gov</text>
+  <text x="698" y="430" class="s">Retraction tags, linked notices,</text>
+  <text x="698" y="450" class="s">trial registration numbers and</text>
+  <text x="698" y="470" class="s">dates (Standard and Extended)</text>
+
+  <rect x="682" y="496" width="236" height="88" rx="10" class="ext"/>
+  <text x="698" y="522" class="tb">Crossref · OpenAlex</text>
+  <text x="698" y="546" class="s">Publisher notices (mainly</text>
+  <text x="698" y="566" class="s">corrections), author IDs · Extended</text>
+
+  <rect x="682" y="596" width="236" height="92" rx="10" fill="#ffffff" stroke="#0b0b0b" stroke-width="1.5"/>
+  <text x="698" y="618" class="tb">Four checks</text>
+  <text x="698" y="639" class="s">Retraction · Concern / correction</text>
+  <text x="698" y="658" class="s">Authors' other retractions</text>
+  <text x="698" y="677" class="s">Trial registration timing</text>
+
+  <!-- ============ 4. One result per study ============ -->
+  <circle cx="1008" cy="150" r="17" class="num"/><text x="1008" y="156" text-anchor="middle" class="w" font-size="17">4</text>
+  <text x="1034" y="157" class="h">One result per study</text>
+  <text x="994" y="190" class="sub">Notices merged across sources;</text>
+  <text x="994" y="208" class="sub">the most serious one sets the status</text>
+
+  <!-- status pills -->
+  <rect x="994" y="228" width="236" height="34" rx="17" fill="#d03b3b"/>
+  <text x="1012" y="250" class="w">✕  Retracted</text>
+  <rect x="994" y="270" width="236" height="34" rx="17" fill="#ec835a"/>
+  <text x="1012" y="292" class="w">!  Expression of concern</text>
+  <rect x="994" y="312" width="236" height="34" rx="17" fill="#898781"/>
+  <text x="1012" y="334" class="w">?  Possible match – verify</text>
+  <rect x="994" y="354" width="236" height="34" rx="17" fill="#fab219"/>
+  <text x="1012" y="376" class="wd">!  Correction</text>
+  <rect x="994" y="396" width="236" height="34" rx="17" fill="#fab219"/>
+  <text x="1012" y="418" class="wd">!  Authors' other retractions</text>
+  <rect x="994" y="438" width="236" height="34" rx="17" fill="#fab219"/>
+  <text x="1012" y="460" class="wd">!  Late trial registration</text>
+  <rect x="994" y="480" width="236" height="34" rx="17" fill="#0ca30c"/>
+  <text x="1012" y="502" class="w">✓  No notices found</text>
+
+  <rect x="994" y="530" width="236" height="150" rx="10" class="box"/>
+  <text x="1010" y="556" class="tb">Every flag says why</text>
+  <text x="1010" y="580" class="s">e.g. “Retraction notice 2018-10-11</text>
+  <text x="1010" y="600" class="s">(Retraction Watch, PubMed).</text>
+  <text x="1010" y="620" class="s">Reasons: duplication of data”</text>
+  <text x="1010" y="648" class="s">Expression of concern → retraction:</text>
+  <text x="1010" y="668" class="s">both notices kept, one study</text>
+
+  <!-- ============ 5. Review & export ============ -->
+  <circle cx="1320" cy="150" r="17" class="num"/><text x="1320" y="156" text-anchor="middle" class="w" font-size="17">5</text>
+  <text x="1346" y="157" class="h">Review &amp; export</text>
+  <text x="1306" y="190" class="sub">The reviewer decides,</text>
+  <text x="1306" y="208" class="sub">the app documents</text>
+
+  <rect x="1306" y="226" width="236" height="96" rx="10" class="box"/>
+  <text x="1322" y="252" class="tb">Choose what to review</text>
+  <text x="1322" y="276" class="s">Retractions, concerns and possible</text>
+  <text x="1322" y="296" class="s">matches are selected by default</text>
+  <path d="M1424 324 L1424 342" class="thin"/>
+
+  <rect x="1306" y="346" width="236" height="132" rx="10" class="box"/>
+  <text x="1322" y="372" class="tb">Decide for each study</text>
+  <text x="1322" y="396" class="s">Confirmed – exclude</text>
+  <text x="1322" y="416" class="s">Confirmed – keep</text>
+  <text x="1322" y="436" class="s">False match – ignore  (+ note)</text>
+  <rect x="1322" y="452" width="204" height="10" rx="5" fill="#e1e0d9"/>
+  <rect x="1322" y="452" width="122" height="10" rx="5" fill="#2a78d6"/>
+  <path d="M1424 480 L1424 498" class="thin"/>
+
+  <rect x="1306" y="502" width="236" height="178" rx="10" fill="#eef8ee" stroke="#0ca30c" stroke-width="2"/>
+  <text x="1322" y="528" class="tb">Excel report</text>
+  <text x="1322" y="554" class="t">• Overview with charts</text>
+  <text x="1322" y="576" class="t">• Summary: status, why,</text>
+  <text x="1322" y="596" class="t">   decision and note</text>
+  <text x="1322" y="618" class="t">• Notices · Evidence</text>
+  <text x="1322" y="640" class="t">• Database versions, dates</text>
+  <text x="1322" y="662" class="t">• Draft methods text</text>
+
+  <!-- ============ Check types band ============ -->
+  <text x="48" y="748" class="h" font-size="20">Check types</text>
+  <text x="190" y="748" class="sub">choose on upload · times for about 1,000 references with DOIs</text>
+
+  <rect x="40" y="764" width="496" height="104" rx="12" fill="#ffffff" stroke="#2a78d6" stroke-width="2"/>
+  <text x="62" y="796" class="tb" font-size="18">Quick</text>
+  <text x="62" y="822" class="t">Retraction Watch only, no internet</text>
+  <text x="62" y="848" class="s">≈ 5 seconds (10,000 references in under a minute)</text>
+
+  <rect x="552" y="764" width="496" height="104" rx="12" fill="#eaf2fc" stroke="#2a78d6" stroke-width="2.5"/>
+  <text x="574" y="796" class="tb" font-size="18">Standard  <tspan class="s" font-weight="400">(default)</tspan></text>
+  <text x="574" y="822" class="t">+ PubMed and ClinicalTrials.gov</text>
+  <text x="574" y="848" class="s">≈ 45 seconds</text>
+
+  <rect x="1064" y="764" width="496" height="104" rx="12" class="ext"/>
+  <text x="1086" y="796" class="tb" font-size="18">Extended</text>
+  <text x="1086" y="822" class="t">+ Crossref publisher notices and OpenAlex</text>
+  <text x="1086" y="848" class="s">several minutes (Crossref allows 1 request per second)</text>
+</svg>
