@@ -20,7 +20,7 @@ from inspectsr.status import DECISIONS, NOT_SELECTED, NOT_YET, STATUS_INFO, grou
 st.set_page_config(page_title="Retraction Watch check", page_icon="🔎", layout="wide")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Notices", "5 · Final overview & export",
+PAGES = ["1 · Input", "2 · Overview", "3 · Flagged studies", "4 · Final overview & export",
          "Explore Retraction Watch"]
 
 st.markdown("""
@@ -67,6 +67,8 @@ def rw_index():
 
 ss = st.session_state
 ss.setdefault("page", PAGES[0])
+if ss.page not in PAGES:  # page renamed or removed by an app update
+    ss.page = PAGES[0]
 if "_goto" in ss:  # navigation requested by a button in the previous run
     ss.page = ss.pop("_goto")
 ss.setdefault("parsed", [])        # list[Study]
@@ -592,22 +594,19 @@ def _evidence_df(r) -> pd.DataFrame:
 
 
 # =====================================================================================
-# 4. NOTICES
+# NOTICE FIGURES (shown on the final overview page)
 # =====================================================================================
 
-def page_notices():
-    a = need_assessment()
-    if not a:
-        return
-    st.title("Notices")
+def _notice_figures(a: Assessment):
     nt = a.notices_table()
     nt = nt[~nt["Possible match only"]]
     if nt.empty:
-        st.success("No retractions, expressions of concern or corrections found among the included studies.")
         return
     studies = {s.uid: s for s in a.studies}
 
-    # timeline: publication + each notice
+    st.markdown("#### Timeline of notices")
+    st.caption("When each study with a notice was published, and when its notices appeared. A study can have "
+               "several notices, e.g. an expression of concern followed by a retraction.")
     pub = [{"ID": u, "Study": studies[u].label, "Event": "Publication",
             "Date": studies[u].pub_date or (f"{studies[u].year}-07-01" if studies[u].year else None),
             "Detail": studies[u].title} for u in nt["ID"].unique()]
@@ -615,15 +614,13 @@ def page_notices():
                     [["ID", "Study", "Event", "Date", "Detail"]]], ignore_index=True)
     tl = tl[tl["Date"].fillna("").str.len() >= 7]
     tl["Study"] = tl["ID"] + " " + tl["Study"]
-    st.markdown("#### Timeline")
-    st.caption("When each study was published and when notices appeared.")
     ch = charts.notice_timeline(tl)
     if ch is not None:
         st.altair_chart(ch, width="stretch")
     ret = nt[nt["Notice"] == "Retraction"].dropna(subset=["Date"])
     yrs = []
-    for _, r in ret.groupby("ID")["Date"].min().items():
-        s = studies[_]
+    for uid, r in ret.groupby("ID")["Date"].min().items():
+        s = studies[uid]
         p = s.pub_date or (f"{s.year}-07-01" if s.year else None)
         if p and len(r) >= 7:
             yrs.append((pd.to_datetime(r) - pd.to_datetime(p)).days / 365.25)
@@ -631,61 +628,34 @@ def page_notices():
         st.caption(f"Median time from publication to retraction: **{pd.Series(yrs).median():.1f} years** "
                    f"(range {min(yrs):.1f}–{max(yrs):.1f}).")
 
-    c1, c2 = st.columns(2, gap="large")
-    with c1:
-        st.markdown("#### Notices by type")
-        bytype = nt.groupby("Notice")["ID"].nunique().reset_index(name="Records").rename(columns={"Notice": "Item"})
-        st.altair_chart(explore._hbar(bytype), width="stretch")
-    with c2:
+    ret_n = nt[nt["Notice"] == "Retraction"][["ID", "Study", "Reasons (Retraction Watch)"]]
+    per = (ret_n.assign(Reason=ret_n["Reasons (Retraction Watch)"].str.split("; ")).explode("Reason")
+           .query("Reason.str.len() > 0", engine="python").drop_duplicates(["ID", "Reason"]))
+    if not per.empty:
         st.markdown("#### Why were they retracted?")
-        ret_n = nt[nt["Notice"] == "Retraction"][["ID", "Study", "Reasons (Retraction Watch)"]]
-        per = (ret_n.assign(Reason=ret_n["Reasons (Retraction Watch)"].str.split("; ")).explode("Reason")
-               .query("Reason.str.len() > 0", engine="python").drop_duplicates(["ID", "Reason"]))
-        if per.empty:
-            st.caption("No retraction reasons recorded.")
-        else:
-            n_st, n_r = per["ID"].nunique(), per["Reason"].nunique()
-            st.caption(f"Retraction Watch lists several reasons per retraction, so {n_st} retracted "
-                       f"stud{'y' if n_st == 1 else 'ies'} give {n_r} different reasons. Each bar shows how many "
-                       "of the retracted studies have that reason.")
-            rdf = per.groupby("Reason")["ID"].nunique().sort_values(ascending=False).head(12) \
-                .rename_axis("Item").reset_index(name="Studies")
-            st.altair_chart(explore._hbar(rdf, value="Studies", axis_title="Retracted studies"), width="stretch")
-            if n_st <= 10:
-                st.dataframe(per.groupby(["ID", "Study"])["Reason"].apply("; ".join).reset_index()
-                             .drop(columns="ID").rename(columns={"Reason": "Reasons (Retraction Watch)"}),
-                             hide_index=True, width="stretch",
-                             column_config={"Reasons (Retraction Watch)": st.column_config.TextColumn(width="large")})
+        n_st, n_r = per["ID"].nunique(), per["Reason"].nunique()
+        st.caption(f"Retraction Watch lists several reasons per retraction, so {n_st} retracted "
+                   f"stud{'y' if n_st == 1 else 'ies'} give {n_r} different reasons. Each bar shows how many "
+                   "of the retracted studies have that reason.")
+        c1, c2 = st.columns([3, 2], gap="large")
+        rdf = per.groupby("Reason")["ID"].nunique().sort_values(ascending=False).head(12) \
+            .rename_axis("Item").reset_index(name="Studies")
+        c1.altair_chart(explore._hbar(rdf, value="Studies", axis_title="Retracted studies"), width="stretch")
+        if n_st <= 10:
+            c2.dataframe(per.groupby(["ID", "Study"])["Reason"].apply("; ".join).reset_index()
+                         .drop(columns="ID").rename(columns={"Reason": "Reasons (Retraction Watch)"}),
+                         hide_index=True, width="stretch",
+                         column_config={"Reasons (Retraction Watch)": st.column_config.TextColumn(width="large")})
 
     st.markdown("#### Which sources reported each notice")
     st.caption("Sources differ in coverage and timing, so no single database is enough. "
                "“Crossref (from RW)” is Retraction Watch data redistributed by Crossref.")
     sa = nt.assign(Source=nt["Reported by"].str.split(", ")).explode("Source")
-    sa = sa.assign(Flag=sa["Notice"])
-    st.altair_chart(charts.source_agreement(sa), width="content")
-
-    st.markdown("#### Studies with notices")
-    st.caption("Click a study to see its notices.")
-    per = nt.groupby(["ID", "Study"]).agg(Notices=("Notice", lambda x: ", ".join(dict.fromkeys(x))),
-                                          First=("Date", "min")).reset_index()
-    per["Title"] = per["ID"].map(lambda u: studies[u].title)
-    ev = st.dataframe(per[["Study", "Title", "Notices", "First"]].rename(columns={"First": "First notice"}),
-                      hide_index=True, width="stretch", on_select="rerun", selection_mode="single-row",
-                      key="notice_pick")
-    rows = ev.selection.rows if ev and ev.selection else []
-    if rows:
-        uid = per.iloc[rows[0]]["ID"]
-        s = studies[uid]
-        with st.container(border=True):
-            st.markdown(f"**{s.label}** · {s.title}")
-            st.markdown(_links(s))
-            for nn in a.notices(uid):
-                _notice_card(nn)
-            st.button("Open full study page →", on_click=open_study, args=(uid,))
+    st.altair_chart(charts.source_agreement(sa.assign(Flag=sa["Notice"])), width="content")
 
 
 # =====================================================================================
-# 5. EXPORT
+# 4. FINAL OVERVIEW & EXPORT
 # =====================================================================================
 
 def page_export():
@@ -751,6 +721,8 @@ def page_export():
             order=alt.Order("Finding:N"),
             tooltip=["Year", "Finding", "Studies"]).properties(height=240, width="container")
         st.altair_chart(ch, width="stretch")
+
+    _notice_figures(a)
 
     noid = a.not_identified_table()
     st.markdown(f"#### Not identified ({len(noid)})")
@@ -820,7 +792,6 @@ def page_explore():
     PAGES[0]: page_input,
     PAGES[1]: page_overview,
     PAGES[2]: page_flagged,
-    PAGES[3]: page_notices,
-    PAGES[4]: page_export,
-    PAGES[5]: page_explore,
+    PAGES[3]: page_export,
+    PAGES[4]: page_explore,
 }[page]()
