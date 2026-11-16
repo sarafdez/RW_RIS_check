@@ -157,8 +157,8 @@
   <text x="1010" y="580" class="s">e.g. “Retraction notice 2018-10-11</text>
   <text x="1010" y="600" class="s">(Retraction Watch, PubMed).</text>
   <text x="1010" y="620" class="s">Reasons: duplication of data”</text>
-  <text x="1010" y="648" class="s">Expression of concern → retraction:</text>
-  <text x="1010" y="668" class="s">both notices kept, one study</text>
+  <text x="1010" y="648" class="s">A corrigendum in your list is</text>
+  <text x="1010" y="668" class="s">merged into its original article</text>
 
   <!-- ============ 5. Review & export ============ -->
   <circle cx="1320" cy="150" r="17" class="num"/><text x="1320" y="156" text-anchor="middle" class="w" font-size="17">5</text>
@@ -166,28 +166,29 @@
   <text x="1306" y="190" class="sub">The reviewer decides,</text>
   <text x="1306" y="208" class="sub">the app documents</text>
 
-  <rect x="1306" y="226" width="236" height="96" rx="10" class="box"/>
-  <text x="1322" y="252" class="tb">Choose what to review</text>
-  <text x="1322" y="276" class="s">Retractions, concerns and possible</text>
-  <text x="1322" y="296" class="s">matches are selected by default</text>
-  <path d="M1424 324 L1424 342" class="thin"/>
+  <rect x="1306" y="226" width="236" height="118" rx="10" class="box"/>
+  <text x="1322" y="252" class="tb">Flagged studies</text>
+  <text x="1322" y="276" class="s">Choose which to review, then</text>
+  <text x="1322" y="296" class="s">decide: exclude · keep ·</text>
+  <text x="1322" y="316" class="s">false match (+ note)</text>
+  <rect x="1322" y="326" width="204" height="8" rx="4" fill="#e1e0d9"/>
+  <rect x="1322" y="326" width="122" height="8" rx="4" fill="#2a78d6"/>
+  <path d="M1424 346 L1424 362" class="thin"/>
 
-  <rect x="1306" y="346" width="236" height="132" rx="10" class="box"/>
-  <text x="1322" y="372" class="tb">Decide for each study</text>
-  <text x="1322" y="396" class="s">Confirmed – exclude</text>
-  <text x="1322" y="416" class="s">Confirmed – keep</text>
-  <text x="1322" y="436" class="s">False match – ignore  (+ note)</text>
-  <rect x="1322" y="452" width="204" height="10" rx="5" fill="#e1e0d9"/>
-  <rect x="1322" y="452" width="122" height="10" rx="5" fill="#2a78d6"/>
-  <path d="M1424 480 L1424 498" class="thin"/>
+  <rect x="1306" y="366" width="236" height="96" rx="10" class="box"/>
+  <text x="1322" y="392" class="tb">Authors</text>
+  <text x="1322" y="416" class="s">Same person? Checked once</text>
+  <text x="1322" y="436" class="s">per author, for all their studies</text>
+  <path d="M1424 464 L1424 480" class="thin"/>
 
-  <rect x="1306" y="502" width="236" height="178" rx="10" fill="#eef8ee" stroke="#0ca30c" stroke-width="2"/>
-  <text x="1322" y="528" class="tb">Excel report</text>
-  <text x="1322" y="554" class="t">• Overview with charts</text>
-  <text x="1322" y="576" class="t">• Summary: status, why,</text>
-  <text x="1322" y="596" class="t">   decision and note</text>
-  <text x="1322" y="618" class="t">• Notices · Evidence</text>
-  <text x="1322" y="640" class="t">• Database versions, dates</text>
+  <rect x="1306" y="484" width="236" height="196" rx="10" fill="#eef8ee" stroke="#0ca30c" stroke-width="2"/>
+  <text x="1322" y="510" class="tb">Export</text>
+  <text x="1322" y="536" class="t">• Excel report with charts,</text>
+  <text x="1322" y="556" class="t">   decisions and evidence</text>
+  <text x="1322" y="580" class="t">• Cleaned RIS file:</text>
+  <text x="1322" y="600" class="s">   excluded studies removed,</text>
+  <text x="1322" y="618" class="s">   notices replaced by the</text>
+  <text x="1322" y="636" class="s">   original article</text>
   <text x="1322" y="662" class="t">• Draft methods text</text>
 
   <!-- ============ Check types band ============ -->

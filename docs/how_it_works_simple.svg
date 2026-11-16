@@ -94,7 +94,7 @@
       <path class="icon" d="M28 82 L48 102 L84 62"/>
     </g>
     <text x="1110" y="278" text-anchor="middle" class="h">Review</text>
-    <text x="1110" y="310" text-anchor="middle" class="t">flagged studies, with reasons</text>
+    <text x="1110" y="310" text-anchor="middle" class="t">flagged studies and authors</text>
     <rect x="1000" y="334" width="220" height="30" rx="15" fill="#d03b3b"/><text x="1016" y="355" class="w">✕  Retracted</text>
     <rect x="1000" y="370" width="220" height="30" rx="15" fill="#ec835a"/><text x="1016" y="391" class="w">!  Concern / correction</text>
     <rect x="1000" y="406" width="220" height="30" rx="15" fill="#0ca30c"/><text x="1016" y="427" class="w">✓  No notices found</text>
@@ -115,8 +115,8 @@
     </g>
     <text x="1420" y="278" text-anchor="middle" class="h">Export</text>
     <text x="1420" y="310" text-anchor="middle" class="t">documented for the review</text>
-    <text x="1420" y="364" text-anchor="middle" class="chipt">Excel report</text>
-    <text x="1420" y="390" text-anchor="middle" class="chipt">summary charts</text>
+    <text x="1420" y="364" text-anchor="middle" class="chipt">Excel report with charts</text>
+    <text x="1420" y="390" text-anchor="middle" class="chipt">cleaned RIS file</text>
     <text x="1420" y="416" text-anchor="middle" class="chipt">decisions and notes</text>
     <text x="1420" y="442" text-anchor="middle" class="chipt">draft methods text</text>
   </g>
