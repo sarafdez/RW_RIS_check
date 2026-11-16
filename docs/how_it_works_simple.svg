@@ -74,8 +74,8 @@
       <path class="icon" d="M0 86 C0 110 110 110 110 86"/>
     </g>
     <text x="800" y="278" text-anchor="middle" class="h">Check</text>
-    <text x="800" y="310" text-anchor="middle" class="t">against Retraction Watch</text>
-    <text x="800" y="334" text-anchor="middle" class="opt">+ PubMed and other sources (optional)</text>
+    <text x="800" y="310" text-anchor="middle" class="t">Retraction Watch + Crossref</text>
+    <text x="800" y="334" text-anchor="middle" class="opt">offline · + PubMed and others (optional)</text>
     <text x="800" y="374" text-anchor="middle" class="chipt">retractions</text>
     <text x="800" y="398" text-anchor="middle" class="chipt">expressions of concern</text>
     <text x="800" y="422" text-anchor="middle" class="chipt">corrections</text>
@@ -124,8 +124,8 @@
   <!-- ===== key facts ===== -->
   <g id="f">
     <line x1="40" y1="525" x2="1560" y2="525" stroke="#e1e0d9" stroke-width="2"/>
-    <text x="210" y="585" text-anchor="middle"><tspan class="factb">~74,000</tspan><tspan class="fact"> Retraction Watch notices</tspan></text>
-    <text x="610" y="585" text-anchor="middle"><tspan class="factb">1,000</tspan><tspan class="fact"> studies in ~1 minute</tspan></text>
+    <text x="210" y="585" text-anchor="middle"><tspan class="factb">2 lists</tspan><tspan class="fact"> of notices, used offline</tspan></text>
+    <text x="610" y="585" text-anchor="middle"><tspan class="factb">1,000</tspan><tspan class="fact"> studies in ~5 seconds</tspan></text>
     <text x="1000" y="585" text-anchor="middle"><tspan class="factb">every flag</tspan><tspan class="fact"> explained</tspan></text>
     <text x="1380" y="585" text-anchor="middle"><tspan class="factb">every decision</tspan><tspan class="fact"> documented</tspan></text>
   </g>
