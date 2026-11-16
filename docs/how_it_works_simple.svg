@@ -6,99 +6,127 @@
     <style>
       .card { fill: #f6f6f3; stroke: #e1e0d9; stroke-width: 2; }
       .num { fill: #2a78d6; }
-      .numt { font-size: 22px; font-weight: 700; fill: #ffffff; }
-      .h { font-size: 30px; font-weight: 700; fill: #0b0b0b; }
-      .t { font-size: 20px; fill: #52514e; }
+      .numt { font-size: 20px; font-weight: 700; fill: #ffffff; }
+      .h { font-size: 28px; font-weight: 700; fill: #0b0b0b; }
+      .t { font-size: 18px; fill: #52514e; }
+      .opt { font-size: 15px; fill: #898781; font-style: italic; }
       .chip { fill: #ffffff; stroke: #c3c2b7; stroke-width: 1.5; }
-      .chipt { font-size: 16px; fill: #0b0b0b; }
+      .chipt { font-size: 15px; fill: #0b0b0b; }
       .icon { fill: none; stroke: #2a78d6; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
       .arrow { stroke: #2a78d6; stroke-width: 6; fill: none; marker-end: url(#ah); }
-      .w { font-size: 17px; font-weight: 700; fill: #ffffff; }
-      .wd { font-size: 17px; font-weight: 700; fill: #0b0b0b; }
-      .fact { font-size: 22px; fill: #0b0b0b; }
-      .factb { font-size: 22px; font-weight: 700; fill: #2a78d6; }
+      .w { font-size: 15px; font-weight: 700; fill: #ffffff; }
+      .fact { font-size: 21px; fill: #0b0b0b; }
+      .factb { font-size: 21px; font-weight: 700; fill: #2a78d6; }
     </style>
   </defs>
 
   <rect width="1600" height="640" fill="#ffffff"/>
 
-  <!-- cards -->
-  <rect x="40"   y="30" width="340" height="440" rx="20" class="card"/>
-  <rect x="440"  y="30" width="340" height="440" rx="20" class="card"/>
-  <rect x="840"  y="30" width="340" height="440" rx="20" class="card"/>
-  <rect x="1230" y="30" width="340" height="440" rx="20" class="card"/>
-
-  <!-- arrows -->
-  <path d="M386 250 L428 250" class="arrow"/>
-  <path d="M786 250 L828 250" class="arrow"/>
-  <path d="M1186 250 L1228 250" class="arrow"/>
-
   <!-- ===== 1 Upload ===== -->
-  <circle cx="80" cy="70" r="22" class="num"/><text x="80" y="78" text-anchor="middle" class="numt">1</text>
-  <!-- icon: document with upload arrow -->
-  <g transform="translate(160,95)">
-    <path class="icon" d="M10 0 H70 L100 30 V130 H10 Z"/>
-    <path class="icon" d="M70 0 V30 H100"/>
-    <path class="icon" d="M55 110 V60 M35 80 L55 60 L75 80"/>
+  <g id="s1">
+    <rect x="40" y="30" width="280" height="450" rx="20" class="card"/>
+    <circle cx="76" cy="66" r="20" class="num"/><text x="76" y="73" text-anchor="middle" class="numt">1</text>
+    <g transform="translate(130,90)">
+      <path class="icon" d="M10 0 H70 L100 30 V130 H10 Z"/>
+      <path class="icon" d="M70 0 V30 H100"/>
+      <path class="icon" d="M55 110 V60 M35 80 L55 60 L75 80"/>
+    </g>
+    <text x="180" y="278" text-anchor="middle" class="h">Upload</text>
+    <text x="180" y="310" text-anchor="middle" class="t">your included studies</text>
+    <rect x="62"  y="346" width="74" height="32" rx="16" class="chip"/><text x="99"  y="368" text-anchor="middle" class="chipt">RIS</text>
+    <rect x="143" y="346" width="74" height="32" rx="16" class="chip"/><text x="180" y="368" text-anchor="middle" class="chipt">PubMed</text>
+    <rect x="224" y="346" width="74" height="32" rx="16" class="chip"/><text x="261" y="368" text-anchor="middle" class="chipt">Excel</text>
+    <rect x="62"  y="388" width="74" height="32" rx="16" class="chip"/><text x="99"  y="410" text-anchor="middle" class="chipt">Word</text>
+    <rect x="143" y="388" width="74" height="32" rx="16" class="chip"/><text x="180" y="410" text-anchor="middle" class="chipt">PDF</text>
+    <rect x="224" y="388" width="74" height="32" rx="16" class="chip"/><text x="261" y="410" text-anchor="middle" class="chipt">text</text>
   </g>
-  <text x="210" y="285" text-anchor="middle" class="h">Upload</text>
-  <text x="210" y="320" text-anchor="middle" class="t">your included studies</text>
-  <rect x="66"  y="352" width="78"  height="34" rx="17" class="chip"/><text x="105" y="375" text-anchor="middle" class="chipt">RIS</text>
-  <rect x="152" y="352" width="96"  height="34" rx="17" class="chip"/><text x="200" y="375" text-anchor="middle" class="chipt">PubMed</text>
-  <rect x="256" y="352" width="96"  height="34" rx="17" class="chip"/><text x="304" y="375" text-anchor="middle" class="chipt">Excel</text>
-  <rect x="66"  y="396" width="78"  height="34" rx="17" class="chip"/><text x="105" y="419" text-anchor="middle" class="chipt">Word</text>
-  <rect x="152" y="396" width="96"  height="34" rx="17" class="chip"/><text x="200" y="419" text-anchor="middle" class="chipt">PDF</text>
-  <rect x="256" y="396" width="96"  height="34" rx="17" class="chip"/><text x="304" y="419" text-anchor="middle" class="chipt">text</text>
+
+  <g id="a1"><path d="M324 255 L346 255" class="arrow"/></g>
 
   <!-- ===== 2 Identify ===== -->
-  <circle cx="480" cy="70" r="22" class="num"/><text x="480" y="78" text-anchor="middle" class="numt">2</text>
-  <!-- icon: magnifying glass -->
-  <g transform="translate(560,100)">
-    <circle class="icon" cx="50" cy="50" r="42"/>
-    <path class="icon" d="M81 81 L120 120"/>
+  <g id="s2">
+    <rect x="350" y="30" width="280" height="450" rx="20" class="card"/>
+    <circle cx="386" cy="66" r="20" class="num"/><text x="386" y="73" text-anchor="middle" class="numt">2</text>
+    <g transform="translate(435,95)">
+      <circle class="icon" cx="50" cy="50" r="42"/>
+      <path class="icon" d="M81 81 L118 118"/>
+    </g>
+    <text x="490" y="278" text-anchor="middle" class="h">Identify</text>
+    <text x="490" y="310" text-anchor="middle" class="t">find each study's DOI</text>
+    <text x="490" y="356" text-anchor="middle" class="chipt">your file</text>
+    <text x="490" y="378" text-anchor="middle" class="chipt" fill="#898781">↓</text>
+    <text x="490" y="400" text-anchor="middle" class="chipt">Retraction Watch</text>
+    <text x="490" y="422" text-anchor="middle" class="chipt" fill="#898781">↓</text>
+    <text x="490" y="444" text-anchor="middle" class="chipt">PubMed · OpenAlex</text>
+    <text x="490" y="466" text-anchor="middle" class="opt">(optional)</text>
   </g>
-  <text x="610" y="285" text-anchor="middle" class="h">Identify</text>
-  <text x="610" y="320" text-anchor="middle" class="t">find each study's DOI</text>
-  <text x="610" y="364" text-anchor="middle" class="chipt">your file</text>
-  <text x="610" y="386" text-anchor="middle" class="chipt" fill="#898781">↓</text>
-  <text x="610" y="408" text-anchor="middle" class="chipt">Retraction Watch</text>
-  <text x="610" y="430" text-anchor="middle" class="chipt" fill="#898781">↓</text>
-  <text x="610" y="452" text-anchor="middle" class="chipt">PubMed</text>
+
+  <g id="a2"><path d="M634 255 L656 255" class="arrow"/></g>
 
   <!-- ===== 3 Check ===== -->
-  <circle cx="880" cy="70" r="22" class="num"/><text x="880" y="78" text-anchor="middle" class="numt">3</text>
-  <!-- icon: database cylinder -->
-  <g transform="translate(955,92)">
-    <ellipse class="icon" cx="55" cy="18" rx="55" ry="18"/>
-    <path class="icon" d="M0 18 V118 C0 142 110 142 110 118 V18"/>
-    <path class="icon" d="M0 52 C0 76 110 76 110 52"/>
-    <path class="icon" d="M0 86 C0 110 110 110 110 86"/>
+  <g id="s3">
+    <rect x="660" y="30" width="280" height="450" rx="20" class="card"/>
+    <circle cx="696" cy="66" r="20" class="num"/><text x="696" y="73" text-anchor="middle" class="numt">3</text>
+    <g transform="translate(745,88)">
+      <ellipse class="icon" cx="55" cy="18" rx="55" ry="18"/>
+      <path class="icon" d="M0 18 V118 C0 142 110 142 110 118 V18"/>
+      <path class="icon" d="M0 52 C0 76 110 76 110 52"/>
+      <path class="icon" d="M0 86 C0 110 110 110 110 86"/>
+    </g>
+    <text x="800" y="278" text-anchor="middle" class="h">Check</text>
+    <text x="800" y="310" text-anchor="middle" class="t">against Retraction Watch</text>
+    <text x="800" y="334" text-anchor="middle" class="opt">+ PubMed and other sources (optional)</text>
+    <text x="800" y="374" text-anchor="middle" class="chipt">retractions</text>
+    <text x="800" y="398" text-anchor="middle" class="chipt">expressions of concern</text>
+    <text x="800" y="422" text-anchor="middle" class="chipt">corrections</text>
+    <text x="800" y="446" text-anchor="middle" class="chipt">authors' other retractions</text>
   </g>
-  <text x="1010" y="285" text-anchor="middle" class="h">Check</text>
-  <text x="1010" y="320" text-anchor="middle" class="t">Retraction Watch + PubMed</text>
-  <text x="1010" y="372" text-anchor="middle" class="chipt">retractions</text>
-  <text x="1010" y="398" text-anchor="middle" class="chipt">expressions of concern</text>
-  <text x="1010" y="424" text-anchor="middle" class="chipt">corrections</text>
-  <text x="1010" y="450" text-anchor="middle" class="chipt">authors' other retractions</text>
+
+  <g id="a3"><path d="M944 255 L966 255" class="arrow"/></g>
 
   <!-- ===== 4 Review ===== -->
-  <circle cx="1280" cy="70" r="22" class="num"/><text x="1280" y="78" text-anchor="middle" class="numt">4</text>
-  <!-- icon: clipboard with check -->
-  <g transform="translate(1345,90)">
-    <rect class="icon" x="0" y="12" width="110" height="130" rx="10"/>
-    <rect class="icon" x="32" y="0" width="46" height="24" rx="6" fill="#f6f6f3"/>
-    <path class="icon" d="M28 82 L48 102 L84 62"/>
+  <g id="s4">
+    <rect x="970" y="30" width="280" height="450" rx="20" class="card"/>
+    <circle cx="1006" cy="66" r="20" class="num"/><text x="1006" y="73" text-anchor="middle" class="numt">4</text>
+    <g transform="translate(1055,86)">
+      <rect class="icon" x="0" y="12" width="110" height="130" rx="10"/>
+      <rect class="icon" x="32" y="0" width="46" height="24" rx="6" fill="#f6f6f3"/>
+      <path class="icon" d="M28 82 L48 102 L84 62"/>
+    </g>
+    <text x="1110" y="278" text-anchor="middle" class="h">Review</text>
+    <text x="1110" y="310" text-anchor="middle" class="t">flagged studies, with reasons</text>
+    <rect x="1000" y="334" width="220" height="30" rx="15" fill="#d03b3b"/><text x="1016" y="355" class="w">✕  Retracted</text>
+    <rect x="1000" y="370" width="220" height="30" rx="15" fill="#ec835a"/><text x="1016" y="391" class="w">!  Concern / correction</text>
+    <rect x="1000" y="406" width="220" height="30" rx="15" fill="#0ca30c"/><text x="1016" y="427" class="w">✓  No notices found</text>
+    <text x="1110" y="462" text-anchor="middle" class="chipt">you decide: exclude · keep</text>
   </g>
-  <text x="1400" y="285" text-anchor="middle" class="h">Review</text>
-  <text x="1400" y="320" text-anchor="middle" class="t">decide and export</text>
-  <rect x="1282" y="346" width="236" height="32" rx="16" fill="#d03b3b"/><text x="1300" y="368" class="w">✕  Retracted</text>
-  <rect x="1282" y="386" width="236" height="32" rx="16" fill="#ec835a"/><text x="1300" y="408" class="w">!  Concern / correction</text>
-  <rect x="1282" y="426" width="236" height="32" rx="16" fill="#0ca30c"/><text x="1300" y="448" class="w">✓  No notices found</text>
+
+  <g id="a4"><path d="M1254 255 L1276 255" class="arrow"/></g>
+
+  <!-- ===== 5 Export ===== -->
+  <g id="s5">
+    <rect x="1280" y="30" width="280" height="450" rx="20" class="card"/>
+    <circle cx="1316" cy="66" r="20" class="num"/><text x="1316" y="73" text-anchor="middle" class="numt">5</text>
+    <!-- icon: spreadsheet with download arrow -->
+    <g transform="translate(1365,90)">
+      <rect class="icon" x="0" y="0" width="110" height="100" rx="8"/>
+      <path class="icon" d="M0 33 H110 M0 66 H110 M37 0 V100"/>
+      <path class="icon" d="M55 112 V140 M40 126 L55 141 L70 126"/>
+    </g>
+    <text x="1420" y="278" text-anchor="middle" class="h">Export</text>
+    <text x="1420" y="310" text-anchor="middle" class="t">documented for the review</text>
+    <text x="1420" y="364" text-anchor="middle" class="chipt">Excel report</text>
+    <text x="1420" y="390" text-anchor="middle" class="chipt">summary charts</text>
+    <text x="1420" y="416" text-anchor="middle" class="chipt">decisions and notes</text>
+    <text x="1420" y="442" text-anchor="middle" class="chipt">draft methods text</text>
+  </g>
 
   <!-- ===== key facts ===== -->
-  <line x1="40" y1="520" x2="1560" y2="520" stroke="#e1e0d9" stroke-width="2"/>
-  <text x="200" y="580" text-anchor="middle"><tspan class="factb">~74,000</tspan><tspan class="fact"> Retraction Watch notices</tspan></text>
-  <text x="600" y="580" text-anchor="middle"><tspan class="factb">1,000</tspan><tspan class="fact"> studies in ~1 minute</tspan></text>
-  <text x="1000" y="580" text-anchor="middle"><tspan class="factb">every flag</tspan><tspan class="fact"> explained</tspan></text>
-  <text x="1400" y="580" text-anchor="middle"><tspan class="factb">Excel</tspan><tspan class="fact"> report for the review</tspan></text>
+  <g id="f">
+    <line x1="40" y1="525" x2="1560" y2="525" stroke="#e1e0d9" stroke-width="2"/>
+    <text x="210" y="585" text-anchor="middle"><tspan class="factb">~74,000</tspan><tspan class="fact"> Retraction Watch notices</tspan></text>
+    <text x="610" y="585" text-anchor="middle"><tspan class="factb">1,000</tspan><tspan class="fact"> studies in ~1 minute</tspan></text>
+    <text x="1000" y="585" text-anchor="middle"><tspan class="factb">every flag</tspan><tspan class="fact"> explained</tspan></text>
+    <text x="1380" y="585" text-anchor="middle"><tspan class="factb">every decision</tspan><tspan class="fact"> documented</tspan></text>
+  </g>
 </svg>

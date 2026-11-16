@@ -658,7 +658,9 @@ def page_export():
     oc = a.outcome_counts().set_index("Outcome")["Studies"]
     n_ret = sum(group(a.raw_status(s.uid)) == "retracted" for s in a.studies)
     n_notices = int(a.notices_per_year()["Notices"].sum()) if not a.notices_per_year().empty else 0
-    k = st.columns(6)
+    k = st.columns(7)
+    k[6].metric("Not identified", sum(not s.identified for s in a.studies),
+                help="No DOI or PubMed ID found: checked against Retraction Watch by title only. Listed below.")
     k[0].metric("Studies checked", len(a.studies))
     k[1].metric("Flagged", len(a.flagged_uids()))
     k[2].metric("Retracted", n_ret)
@@ -710,10 +712,23 @@ def page_export():
             tooltip=["Year", "Finding", "Studies"]).properties(height=240, width="container")
         st.altair_chart(ch, width="stretch")
 
+    noid = a.not_identified_table()
+    st.markdown(f"#### Not identified ({len(noid)})")
+    if noid.empty:
+        st.caption("Every study was identified by DOI or PubMed ID.")
+    else:
+        st.caption("No DOI or PubMed ID could be found for these references, so they were checked against Retraction "
+                   "Watch **by title only** (exact and similar titles) and not against the other sources. A clean "
+                   "result here is less certain. Add the DOI on the Input page and run again, or check them by hand. "
+                   "They are listed in the **Not identified** sheet of the Excel workbook.")
+        st.dataframe(noid[["Study", "Title", "Journal", "Year", "Result of title check", "Source file"]],
+                     hide_index=True, width="stretch",
+                     column_config={"Title": st.column_config.TextColumn(width="large")})
+
     st.markdown("#### Download")
     st.markdown("The Excel workbook starts with an **Overview** sheet (these numbers and charts), followed by "
                 "**Summary** (one row per study: status, why, whether you selected it for review, your decision and "
-                "note), **Notices**, **Checks**, **Evidence** (every record from every source), **Provenance** and a "
+                "note), **Notices**, **Not identified**, **Checks**, **Evidence** (every record from every source), **Provenance** and a "
                 "draft **Methods text**.")
     d1, d2 = st.columns(2)
     stamp = date.today().isoformat()

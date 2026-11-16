@@ -173,6 +173,24 @@ class Assessment:
                                  "Type": e.kind, "Date": e.date, "Detail": e.detail, "Link": e.url, "Matched by": e.match})
         return pd.DataFrame(rows, columns=["ID", "Study", "Check", "Source", "Type", "Date", "Detail", "Link", "Matched by"])
 
+    def not_identified_table(self) -> pd.DataFrame:
+        """References for which no DOI or PubMed ID could be found: checked against Retraction Watch by title only."""
+        rows = []
+        for s in self.studies:
+            if s.identified:
+                continue
+            status = self.raw_status(s.uid)
+            rows.append({"ID": s.uid, "Study": s.label, "Title": s.title, "Journal": s.journal, "Year": s.year,
+                         "Result of title check": status,
+                         "What was tried": " ".join(s.id_notes) or (
+                             "No DOI or PubMed ID in your file; no exact title match in Retraction Watch. "
+                             + ("Online title searches found nothing." if self.run.online else
+                                "Quick check: no online search was done (use Standard to look it up in PubMed).")),
+                         "Citation as supplied": s.raw[:500], "Source file": s.source_file,
+                         "What to do": "Add the DOI on the Input page and run again, or check the study by hand"})
+        return pd.DataFrame(rows, columns=["ID", "Study", "Title", "Journal", "Year", "Result of title check",
+                                           "What was tried", "Citation as supplied", "Source file", "What to do"])
+
     def provenance_table(self) -> pd.DataFrame:
         rows = [{"Item": "Tool", "Value": f"Retraction Watch check v{__version__}"},
                 {"Item": "Run started", "Value": self.run.started},
@@ -202,6 +220,7 @@ class Assessment:
             sheets = {
                 "Summary": self.summary_table().drop(columns=["Group"]),
                 "Notices": self.notices_table(),
+                "Not identified": self.not_identified_table(),
                 "Checks": self.checks_table(),
                 "Evidence": self.evidence_table(),
                 "Provenance": self.provenance_table(),
@@ -242,7 +261,8 @@ class Assessment:
         nums = [("Studies checked", len(self.studies)), ("Flagged (any finding)", len(self.flagged_uids())),
                 ("Retracted", n_ret), ("Selected for review", total), ("Reviewed", done),
                 ("Excluded", int(oc.get("Confirmed – exclude", 0))), ("Kept", int(oc.get("Confirmed – keep", 0))),
-                ("False matches", int(oc.get("False match – ignore", 0)))]
+                ("False matches", int(oc.get("False match – ignore", 0))),
+                ("Not identified (title check only)", sum(not s.identified for s in self.studies))]
         for i, (k, v) in enumerate(nums):
             ws.write(3 + i, 0, k)
             ws.write(3 + i, 1, v, bold)
@@ -258,7 +278,7 @@ class Assessment:
             return row + len(df), col
 
         # 1. review outcomes
-        r0 = 14
+        r0 = 15
         oc_df = self.outcome_counts()
         ws.write(r0 - 1, 0, "Review of flagged studies", bold)
         last, _ = table(oc_df, r0, 0)
