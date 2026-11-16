@@ -268,7 +268,8 @@ def _fill_metadata(s: Study, d: Dossier):
     for t in (pm.get("trial_ids") or []) + find_trial_ids(s.abstract or ""):
         if t not in s.trial_ids:
             s.trial_ids.append(t)
-    s.design = detect_design(s.title, s.abstract, s.pub_types)
+    if not s.notice_for:  # a notice linked to its original keeps that label
+        s.design = detect_design(s.title, s.abstract, s.pub_types)
 
 
 def gather_online(studies: list[Study], dossiers: dict[str, Dossier], progress: Progress = _noop,
@@ -484,6 +485,38 @@ NOTICE_FOR_REFS = ("ErratumFor", "RetractionOf", "ExpressionOfConcernFor", "Corr
                    "PartialRetractionOf")
 
 
+def _merge_notice(s: Study, target: Study, info: RunInfo, merged: list):
+    target.id_notes.append(f"Your list also contained a notice for this study ({s.uid}: {s.title}); "
+                           "it was merged into this study.")
+    info.duplicates.append(f"{s.uid} is a notice for {target.uid} (the original article); merged into {target.uid}.")
+    merged.append(s)
+
+
+def link_notices_rw(studies: list[Study], dossiers: dict, info: RunInfo, rw: RWIndex):
+    """Offline: Retraction Watch stores each notice's own DOI next to the original paper's DOI, so a notice in the
+    list (most retraction notices and expressions of concern) can be linked without going online."""
+    by_doi = {s.doi: s for s in studies if s.doi}
+    by_pmid = {s.pmid: s for s in studies if s.pmid}
+    merged = []
+    for s in studies:
+        if not s.doi or s.doi not in rw.by_notice_doi:
+            continue
+        s.design = "Notice (not a study)"
+        rec = rw.record(rw.by_notice_doi[s.doi][0])
+        target = (by_doi.get(rec["paper_doi"]) if rec["paper_doi"] else None) or \
+                 (by_pmid.get(rec["paper_pmid"]) if rec["paper_pmid"] else None)
+        if target and target is not s:
+            _merge_notice(s, target, info, merged)
+            continue
+        authors = [a.strip() for a in str(rec["authors"]).split(";") if a.strip()]
+        s.notice_for = {"doi": rec["paper_doi"], "pmid": rec["paper_pmid"], "title": rec["title"],
+                        "authors": authors, "year": int(rec["paper_date"][:4]) if rec["paper_date"] else None,
+                        "journal": rec["journal"], "source": "Retraction Watch", "nature": rec["nature"]}
+    for s in merged:
+        studies.remove(s)
+        dossiers.pop(s.uid, None)
+
+
 def link_notices(studies: list[Study], dossiers: dict, info: RunInfo):
     """A reference that is itself a notice (corrigendum, retraction notice...) belongs to an original article.
     If that article is also in the list, merge the notice into it (one study, one decision). Otherwise remember
@@ -493,7 +526,7 @@ def link_notices(studies: list[Study], dossiers: dict, info: RunInfo):
     by_pmid = {s.pmid: s for s in studies if s.pmid}
     merged = []
     for s in studies:
-        if s.design != "Notice (not a study)":
+        if s.design != "Notice (not a study)" or s.notice_for:
             continue
         d = dossiers[s.uid]
         dois = list((d.crossref or {}).get("is_notice_for") or [])
@@ -506,10 +539,7 @@ def link_notices(studies: list[Study], dossiers: dict, info: RunInfo):
         target = next((by_doi[x] for x in dois if x in by_doi and by_doi[x] is not s), None) or \
             next((by_pmid[x] for x in pmids if x in by_pmid and by_pmid[x] is not s), None)
         if target:
-            target.id_notes.append(f"Your list also contained a notice for this study ({s.uid}: {s.title}); "
-                                   "it was merged into this study.")
-            info.duplicates.append(f"{s.uid} is a notice for {target.uid} (the original article); merged into {target.uid}.")
-            merged.append(s)
+            _merge_notice(s, target, info, merged)
             continue
         meta = {"doi": dois[0] if dois else None, "pmid": pmids[0] if pmids else None}
         if meta["pmid"]:
@@ -564,6 +594,7 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
         f"{rw.meta.get('n_records'):,} records; latest notice {rw.meta.get('latest_notice')}"
     )
     identify_from_rw(studies, rw)
+    link_notices_rw(studies, dossiers, info, rw)
     if online:
         identify(studies, dossiers, progress, use_crossref=extended, use_openalex=extended)
         _merge_duplicates(studies, dossiers, info)
@@ -575,7 +606,8 @@ def run(studies: list[Study], rw: RWIndex, online: bool = True, progress: Progre
             info.sources["OpenAlex"] = f"API (title search, is_retracted, author IDs), queried {now_utc()}"
     else:
         for s in studies:
-            s.design = detect_design(s.title, s.abstract, s.pub_types)
+            if not s.notice_for:  # a notice linked to its original keeps that label
+                s.design = detect_design(s.title, s.abstract, s.pub_types)
     if online:
         link_notices(studies, dossiers, info)
     match_rw(studies, dossiers, rw, progress)

@@ -110,14 +110,22 @@ def _notice_record(s: Study, d: Dossier) -> CheckResult:
     That means the study it belongs to has that notice: report it as such, and name the original if known."""
     title = (s.title or "").lower()
     pts = {p.lower() for p in s.pub_types}
-    if re.search(r"retract|withdraw", title) or "retraction of publication" in pts:
+    nature = (s.notice_for or {}).get("nature")
+    if nature in ("Retraction", "Expression of concern", "Correction"):
+        ntype = nature
+    elif re.search(r"retract|withdraw", title) or "retraction of publication" in pts:
         ntype = "Retraction"
     elif "concern" in title or "expression of concern" in pts:
         ntype = "Expression of concern"
     else:
         ntype = "Correction"
     original, orig_url = None, None
-    for doi in (d.crossref or {}).get("is_notice_for", []) or []:
+    if s.notice_for and (s.notice_for.get("doi") or s.notice_for.get("pmid")):
+        nf = s.notice_for
+        original = (f"“{nf['title']}”, " if nf.get("title") else "") + (f"DOI {nf['doi']}" if nf.get("doi")
+                                                                        else f"PMID {nf['pmid']}")
+        orig_url = DOI.format(nf["doi"]) if nf.get("doi") else pubmed.pubmed_url(nf["pmid"])
+    for doi in ([] if original else (d.crossref or {}).get("is_notice_for", []) or []):
         original, orig_url = f"DOI {doi}", DOI.format(doi)
         break
     if not original:

@@ -351,3 +351,19 @@ def test_cleaned_ris_export_keeps_fields_drops_excluded_and_replaces_notices():
     a.decisions[studies[0].uid] = {"decision": "Confirmed – exclude", "note": ""}
     text, stats = a.to_ris(drop_excluded=True)
     assert stats["excluded"] == 1 and stats["written"] == 1
+
+
+def test_notice_linked_offline_via_retraction_watch_notice_doi():
+    from inspectsr.pipeline import Dossier, link_notices_rw
+    rw = _rw()
+    notice = Study("S001", title="Retraction note: effect of drug X", doi="10.1234/ret.1")
+    info = RunInfo()
+    studies = [notice]
+    link_notices_rw(studies, {"S001": Dossier()}, info, rw)
+    assert notice.notice_for["doi"] == "10.1234/abc.2019.1" and notice.notice_for["nature"] == "Retraction"
+    original = _smith()
+    original.uid = "S002"
+    notice2 = Study("S001", title="Retraction note: effect of drug X", doi="10.1234/ret.1")
+    studies = [notice2, original]
+    link_notices_rw(studies, {"S001": Dossier(), "S002": Dossier()}, info, rw)
+    assert [s.uid for s in studies] == ["S002"] and any("merged" in x for x in info.duplicates)

@@ -70,6 +70,7 @@ class RWIndex:
     titles: list = field(default_factory=list)
     by_author_full: dict = field(default_factory=dict)
     by_author_initial: dict = field(default_factory=dict)
+    by_notice_doi: dict = field(default_factory=dict)   # DOI of the notice itself -> rows
 
     # -- look-ups ------------------------------------------------------------
     def rows(self, idx) -> list[dict]:
@@ -175,6 +176,11 @@ def build_index(df: pd.DataFrame, meta: dict) -> RWIndex:
     idx.by_doi, idx.by_title = dict(by_doi), dict(by_title)
     idx.titles = list(by_title.keys())
     idx.by_author_full, idx.by_author_initial = dict(full), dict(initial)
+    notice = defaultdict(list)
+    for i, nd in enumerate(df["RetractionDOI"].map(normalize_doi)):
+        if nd:
+            notice[nd].append(i)
+    idx.by_notice_doi = dict(notice)
 
     nature = df["RetractionNature"].value_counts().to_dict()
     dates = df["_notice_date"].dropna()

@@ -31,7 +31,7 @@ TRIAL_ID_PATTERNS = {
 }
 
 NOTICE_TITLE_RE = re.compile(
-    r"^\s*(retraction( note| notice)?\s*[:\-–—]|retraction (of|to)\b|notice of retraction|expression of concern|"
+    r"^\s*(retraction( note| notice| statement)?\s*[:\-–—]|retraction (of|to)\b|notice of retraction|statement of retraction|expression of concern|"
     r"editorial expression of concern|erratum|corrigendum|correction( to)?\s*[:\-–—]|correction (of|to)\b)",
     re.IGNORECASE,
 )
