@@ -120,7 +120,7 @@ with st.sidebar:
                f"latest notice {rw.meta.get('latest_notice')}")
     cr = crossref_list_holder(__version__)
     if cr["index"] is not None:
-        st.caption(f"+ Crossref: {cr['index'].meta['n_notices']:,} retraction/concern notices · downloaded "
+        st.caption(f"Also Crossref: {cr['index'].meta['n_notices']:,} retraction/concern notices · downloaded "
                    f"{cr['index'].meta['downloaded_on']}")
     if cr["status"] == "downloading":
         st.progress(cr["progress"], text=cr["msg"] or "Downloading the Crossref notice list…")
@@ -666,13 +666,24 @@ WHY_SAME = {"shared co-author": "Likely the same person: some of those papers sh
             "same OpenAlex author ID": "Likely the same person: OpenAlex links those papers to the same author profile."}
 
 
-def _papers_table(papers: list[dict]):
-    df = pd.DataFrame([{"Paper": p["title"], "Notice": p["nature"], "Year": str(p["date"] or "")[:4],
+def _papers_table(papers: list[dict], limit: int = 25):
+    """Papers sharing co-authors with the study first (the relevant ones), then the rest; at most `limit` rows."""
+    papers = sorted(papers, key=lambda p: (not p.get("shared_coauthor"), not p["integrity"], str(p["date"] or "")))
+    df = pd.DataFrame([{"Shares co-authors": "✓" if p.get("shared_coauthor") else "", "Paper": p["title"],
+                        "Notice": p["nature"], "Year": str(p["date"] or "")[:4],
                         "Reasons (Retraction Watch)": "; ".join(p["reasons"]), "Link": p.get("notice")}
-                       for p in papers])
+                       for p in papers[:limit]])
     st.dataframe(df, hide_index=True, width="stretch",
                  column_config={"Link": st.column_config.LinkColumn(display_text="open ↗"),
-                                "Paper": st.column_config.TextColumn(width="large")})
+                                "Paper": st.column_config.TextColumn(width="large"),
+                                "Shares co-authors": st.column_config.TextColumn(width="small")})
+    if len(papers) > limit:
+        st.caption(f"Showing {limit} of {len(papers)} papers under this name.")
+
+
+def _bulk_verdict(keys: list[str], verdict: str):
+    for k in keys:
+        _set_author_verdict(k, verdict)
 
 
 def _count_badge(n_int: int, label: str | None = None) -> str:
@@ -699,7 +710,8 @@ def page_authors():
                 "The authors below have **other** retracted papers. That can be a warning sign about the research "
                 "team. Check that it is really the same person.")
     t = a.authors_table()
-    leads = t[t["Flagged lead"]] if not t.empty else t
+    # Strong matches, plus any name-only match you confirmed as the same person
+    leads = t[t["Flagged lead"] | (t["Your verdict"] == "Same person")] if not t.empty else t
     if leads.empty:
         st.success("None of the first or last authors has other retractions for research-integrity reasons.")
     else:
@@ -710,8 +722,14 @@ def page_authors():
             "Sorted by the number of other retractions for **research-integrity reasons** (most first): "
             + " ".join(_count_badge(k, lab) for k, lab in ((5, "5 or more"), (2, "2–4"), (1, "1"), (0, "none"))),
             unsafe_allow_html=True)
-        st.caption("How to check: open one or two of the other papers. Same field, same institution, shared "
-                   "co-authors? Then it is the same person. “Different person” removes the warning from their studies.")
+        st.caption("How to check: open the papers marked ✓ (they share co-authors with your study). Same field and "
+                   "institution? Then it is the same person. “Different person” removes the warning from their studies.")
+        unchecked = list(leads.loc[leads["Your verdict"] == AUTHOR_UNCHECKED, "key"])
+        if len(unchecked) > 1:
+            st.button(f"Confirm all {len(unchecked)} unchecked authors as the same person", on_click=_bulk_verdict,
+                      args=(unchecked, "Same person"),
+                      help="These are strong matches (shared co-authors or the same OpenAlex author profile). Use this "
+                           "when you trust the automatic match; you can still change single authors afterwards.")
         for _, r in leads.iterrows():
             papers = r["_papers"]
             n, n_int = len(papers), int(r["Integrity-related"])
@@ -724,9 +742,19 @@ def page_authors():
                     roles.append(f"{m.group(2)} author of *{m.group(1)}*" if m else x)
                 head = f"{_count_badge(n_int)} &nbsp;**{r['Author']}** — " + "; ".join(roles)
                 st.markdown(head, unsafe_allow_html=True)
+                n_shared = sum(bool(p.get("shared_coauthor")) for p in papers)
+                why = WHY_SAME.get(r["Match"], "")
+                if n_shared:
+                    why = (f"Likely the same person: {n_shared} of these papers "
+                           f"{'shares' if n_shared == 1 else 'share'} co-authors with your study (marked ✓).")
+                elif r["Your verdict"] == "Same person":
+                    why = "You confirmed this is the same person."
+                    if n > 20:
+                        why += (f" Note: {n} papers under one name usually means several different people, so this "
+                                "count probably includes namesakes.")
                 st.markdown(f"Has **{n} other retracted paper{'s' if n != 1 else ''} or concern{'s' if n != 1 else ''}**"
                             f" ({n_int} for research-integrity reasons, e.g. unreliable data, misconduct or paper "
-                            f"mills). {WHY_SAME.get(r['Match'], '')}")
+                            f"mills). {why}")
                 with st.expander(f"Show the {n} paper{'s' if n != 1 else ''}"):
                     _papers_table(papers)
                     st.markdown(_author_links(r["Author"]))
@@ -741,15 +769,20 @@ def page_authors():
                 c4.text_input("Note", value=r["Note"], key=f"anote|{r['key']}", label_visibility="collapsed",
                               placeholder="Note (optional)", on_change=_set_author_note, args=(r["key"],))
 
-    others = t[~t["Flagged lead"]] if not t.empty else t
+    others = t[~t["Flagged lead"] & (t["Your verdict"] != "Same person")] if not t.empty else t
     if not others.empty:
-        with st.expander(f"Possible namesakes ({len(others)}): same name only, not flagged"):
-            st.caption("These authors share a name with someone who has a retracted paper, but nothing else links "
-                       "them (no shared co-authors), so they are often different people. They don't flag any study. "
-                       "If you know one is the same person, mark it, and the warning is added to their studies.")
+        with st.expander(f"Possible namesakes ({len(others)}): same name only, not flagged. No action needed"):
+            st.caption("These authors share a name with someone who has a retracted paper, but no shared co-authors "
+                       "link them, so they are usually different people. They don't flag any study and you don't need "
+                       "to check them. If you know one is the same person, mark it: it moves to the list above.")
+            open_keys = list(others.loc[others["Your verdict"] == AUTHOR_UNCHECKED, "key"])
+            if open_keys:
+                st.button(f"Mark all {len(open_keys)} as different people", on_click=_bulk_verdict,
+                          args=(open_keys, "Different person"))
             for _, r in others.iterrows():
-                st.markdown(f"**{r['Author']}** — {r['Studies in your review']} · "
-                            f"{len(r['_papers'])} paper(s) under this name")
+                n_p = len(r["_papers"])
+                many = " · *so many papers that these are almost certainly several different people*" if n_p > 20 else ""
+                st.markdown(f"**{r['Author']}** — {r['Studies in your review']} · {n_p} paper(s) under this name{many}")
                 c1, c2, _ = st.columns([1, 1, 4])
                 for col, (label, v) in zip((c1, c2), [("Same person", "Same person"), ("Different person", "Different person")]):
                     col.button(("✓ " if r["Your verdict"] == v else "") + label, key=f"av|{r['key']}|{v}",

@@ -245,16 +245,26 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
     def _key(name: str) -> str | None:
         return author_keys(name).get("full")  # full first names only: initials are too common to prove identity
 
+    own_keys_cache: dict = {}
+
     def coauthor_overlap(rec: dict, name: str) -> bool:
-        """Another author of the study (same family name AND first name/initial) is also on the retracted paper:
-        a strong sign it is the same research team, not a namesake."""
-        own = _key(name)
-        ours = {k for a in s.authors if (k := _key(a)) and k != own}
-        theirs = set()
+        """Co-authors of the study are also on the retracted paper: a strong sign it is the same research team, not a
+        namesake. One shared co-author by full name is enough; with initials only (e.g. pasted references) at least
+        two shared co-authors (surname + initial) are required, since initials are common."""
+        if name not in own_keys_cache:
+            ok = author_keys(name)
+            ours_full = {k for a in s.authors if (k := author_keys(a).get("full")) and k != ok.get("full")}
+            ours_init = {k for a in s.authors if (k := author_keys(a).get("initial")) and k != ok.get("initial")}
+            own_keys_cache[name] = (ours_full, ours_init)
+        ours_full, ours_init = own_keys_cache[name]
+        theirs_full, theirs_init = set(), set()
         for x in str(rec["authors"]).split(";"):
-            if (k := author_keys(x.strip()).get("full")):
-                theirs.add(k)
-        return bool(ours & theirs)
+            k = author_keys(x.strip())
+            if k.get("full"):
+                theirs_full.add(k["full"])
+            if k.get("initial"):
+                theirs_init.add(k["initial"])
+        return bool(ours_full & theirs_full) or len(ours_init & theirs_init) >= 2
 
     for name, hit in d.author_rw.items():
         recs = [rw.record(r) for r in hit["rows"]]
@@ -264,7 +274,7 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
         integ = [r for r in recs if any(integrity_related(x) for x in r["reasons"])]
         specific = hit["specificity"] == "full name"
         shared = [r for r in integ if coauthor_overlap(r, name)]
-        if specific and shared:
+        if shared:
             strong += 1
             triggers.append(f"{name} has {len(shared)} other integrity-related retraction(s) in Retraction Watch "
                             f"on papers shared with a co-author of this study.")
@@ -272,8 +282,8 @@ def check_1_3(s: Study, d: Dossier, rw: RWIndex) -> CheckResult:
             weak += 1
         role = "first author" if name == s.first_author else "last author"
         p = person(name, role)
-        p["strong"] = p["strong"] or (specific and bool(shared))
-        p["match"] = "shared co-author" if (specific and shared) else f"name only ({hit['specificity']})"
+        p["strong"] = p["strong"] or bool(shared)
+        p["match"] = "shared co-author" if shared else f"name only ({hit['specificity']})"
         shared_ids = {id(r) for r in shared}
         for r in recs:
             p["papers"].append({"title": r["title"], "nature": r["nature"], "date": r["notice_date"],
