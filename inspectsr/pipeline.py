@@ -355,6 +355,11 @@ def _family(name: str) -> str:
 
 
 def _corroborate(s: Study, rec: dict) -> bool:
+    return any(_corroboration(s, rec))
+
+
+def _corroboration(s: Study, rec: dict) -> tuple[bool, bool]:
+    """(first author's family name appears on the record, publication year within ±1)."""
     ok_author = False
     if s.first_author:
         fam = _family(s.first_author)
@@ -362,7 +367,7 @@ def _corroborate(s: Study, rec: dict) -> bool:
     ok_year = False
     if s.year and rec.get("paper_date"):
         ok_year = abs(int(rec["paper_date"][:4]) - int(s.year)) <= 1
-    return ok_author or ok_year
+    return ok_author, ok_year
 
 
 def match_rw(studies: list[Study], dossiers: dict[str, Dossier], rw: RWIndex, progress: Progress = _noop):
@@ -416,7 +421,11 @@ def match_rw(studies: list[Study], dossiers: dict[str, Dossier], rw: RWIndex, pr
                 if s.doi and rec["paper_doi"] and rec["paper_doi"] != s.doi:
                     continue
                 corr = _corroborate(s, rec)
-                strength = "probable" if (score >= FUZZY_HIGH and corr) else "possible"
+                author_ok, year_ok = _corroboration(s, rec)
+                # A slightly different or truncated title (common in pasted references) still counts when both the
+                # first author and the year agree.
+                strength = "probable" if ((score >= FUZZY_HIGH and corr) or (score >= 90 and author_ok and year_ok)) \
+                    else "possible"
                 dossiers[s.uid].rw.append(RWMatch(r, "title_fuzzy", score, corr, strength))
 
     # Research team: first and last author in RW (excluding the study's own records)

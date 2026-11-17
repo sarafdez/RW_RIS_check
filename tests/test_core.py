@@ -424,3 +424,13 @@ def test_crossref_notice_list_flags_publisher_only_retraction(tmp_path):
     assert study_status(a, run_checks(a, ds["S001"], rw))[0] == "Retracted"
     assert study_status(b, run_checks(b, ds["S002"], rw))[0] == "Retracted"
     assert study_status(c, run_checks(c, ds["S003"], rw))[0] == "Expression of concern"
+
+
+def test_free_text_title_first_order_and_truncated_title():
+    ref = ("Pain relief after knee surgery with drug. Journal of Pain. June 20, 2017. A Lee, B Brown, C Clark.")
+    s = inputs.parse_free_text(ref, "t")[0]
+    assert s.title == "Pain relief after knee surgery with drug" and s.authors[0] == "A Lee" and s.year == 2017
+    s.uid = "S001"
+    rw, d = _run([s])
+    m = d[s.uid].rw[0]
+    assert m.method == "title_fuzzy" and m.strength == "probable"  # truncated title, author and year agree

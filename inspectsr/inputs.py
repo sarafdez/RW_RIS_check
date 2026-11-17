@@ -371,33 +371,81 @@ def split_references(text: str) -> list[str]:
 DOI_RE_SIMPLE = re.compile(r"10\.\d{4,9}/\S+")
 
 
+_NAME_PATTERNS = [
+    re.compile(r"^[A-Z][\w'’\-]+(?:\s+[A-Z][\w'’\-]+)?,?\s+(?:[A-Z]\.?\s?){1,3}$"),        # Smith JA / Smith, J.A.
+    re.compile(r"^(?:[A-Z]\.?\s?){1,3}\s*[A-Z][\w'’\-]+(?:[\s\-][A-Z][\w'’\-]+)?$"),        # JA Smith / J. A. Smith
+    re.compile(r"^[A-Z][\w'’\-]+,\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?$"),                          # Smith, John
+    re.compile(r"^[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][\w'’\-]+$"),                           # John Smith
+]
+_MONTHS = r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
+
+
+def _segments(ref: str) -> list[str]:
+    """Split a citation into sentences, without breaking at author initials ("J. A. Smith")."""
+    parts = [p for p in re.split(r"(?<=[\.\?!])\s+", ref) if p.strip()]
+    out: list[str] = []
+    for p in parts:
+        # "J." followed by "A., Smith B." is the same author list: join only when the next piece continues a name
+        if out and re.search(r"(?:^|[\s,])[A-Z]\.$", out[-1]) and re.match(r"^(?:[A-Z]\.|[A-Z]\s|,|&)", p):
+            out[-1] = out[-1] + " " + p
+        else:
+            out.append(p)
+    return [o.strip().rstrip(".").strip() for o in out if o.strip().rstrip(".").strip()]
+
+
+def _is_name(item: str) -> bool:
+    item = item.strip().rstrip(".")
+    return bool(item) and len(item) < 60 and any(p.match(item) for p in _NAME_PATTERNS)
+
+
+def _author_like(seg: str) -> bool:
+    if re.search(r"\bet al\b", seg, re.I):
+        return True
+    items = [i.strip() for i in re.split(r",(?!\s*[A-Z][a-z]+\s*$)|;|\s&\s|\sand\s", seg) if i.strip()]
+    # "Smith, John" pairs are split by the comma above; re-check the whole segment for one name too
+    if len(items) <= 1:
+        return _is_name(seg)
+    return sum(_is_name(i) for i in items) / len(items) >= 0.6
+
+
+def _journal_or_date_like(seg: str) -> bool:
+    words = seg.split()
+    if len(words) <= 3:
+        return True                                     # e.g. "Nature", "Lancet", "J Clin Invest"
+    if re.search(r"\b(19|20)\d{2}\b", seg) and (len(words) <= 8 or re.search(r"\d+\s*[;:(]", seg)):
+        return True                                     # "June 20, 2002", "2021;384(8):693-704"
+    if re.search(rf"\b({_MONTHS})[a-z]*\b", seg, re.I) and len(words) <= 6:
+        return True
+    return len(words) <= 6 and all(len(w.strip(".,")) <= 5 for w in words)   # "N Engl J Med"
+
+
 def _guess_title(ref: str) -> Optional[str]:
-    """Best-effort title from Vancouver/APA-style citation: the sentence after the author list."""
-    r = re.sub(r"https?://\S+|doi:\s*\S+|10\.\d{4,9}/\S+", "", ref, flags=re.I)
+    """Best-effort title from a free-text citation, whatever the order of its parts."""
+    r = re.sub(r"https?://\S+|doi:\s*\S+|10\.\d{4,9}/\S+|PMID:?\s*\d+", "", ref, flags=re.I)
     # Title in quotes: Authors. 2021. "Title". Journal...
     m = re.search(r"[\"“”]([^\"“”]{15,})[\"“”]", r)
     if m:
         return m.group(1).strip().rstrip(".")
     # APA: Authors (2020). Title. Journal...
-    m = re.search(r"\((?:19|20)\d{2}[a-z]?\)\.\s*(.+?[\.\?!])\s", r + " ")
+    m = re.search(r"\((?:19|20)\d{2}[a-z]?\)\.\s*(.+?[\.\?!])(\s|$)", r + " ")
     if m:
         return m.group(1).strip().rstrip(".")
-    # Vancouver: Authors. Title. Journal. Year;...
-    parts = [p.strip() for p in re.split(r"(?<=[\.\?!])\s+(?=[A-Z0-9\[\'\"‘“])", r) if p.strip()]
-    if len(parts) >= 2:
-        cand = parts[1].rstrip(".")
-        if len(cand) > 20:
-            return cand
+    # Otherwise: the longest sentence that is neither an author list nor a journal/date
+    cands = [g for g in _segments(r) if not _author_like(g) and not _journal_or_date_like(g) and len(g.split()) >= 4]
+    if cands:
+        return max(cands, key=len)
     return None
 
 
 def _guess_authors(ref: str) -> list[str]:
-    head = re.split(r"\.\s|\(\d{4}", ref, maxsplit=1)[0]
-    if len(head) > 250 or not re.search(r"[A-Z]", head):
-        return []
-    names = [n.strip() for n in re.split(r",\s*(?=[A-Z][^,]*\s[A-Z]{1,3}\b)|;\s*|\s&\s|,?\s+and\s+", head) if n.strip()]
-    names = [n for n in names if 2 < len(n) < 60 and n.lower() != "et al"]
-    return names[:30]
+    for seg in _segments(re.sub(r"\((?:19|20)\d{2}[a-z]?\).*", "", ref)) + _segments(ref):
+        if _author_like(seg):
+            names = [n.strip().rstrip(".") for n in re.split(r",\s*(?=[A-Z])|;\s*|\s&\s|,?\s+and\s+", seg) if n.strip()]
+            names = [re.sub(r",?\s*et al\.?$", "", n, flags=re.I).strip() for n in names]
+            names = [n for n in names if 2 < len(n) < 60 and n.lower() not in ("et al", "et al.")]
+            if names:
+                return names[:30]
+    return []
 
 
 def parse_free_text(text: str, name: str, fmt: str = "Free text") -> list[Study]:
