@@ -13,6 +13,16 @@ from .pipeline import RunInfo
 from .status import (DECISIONS, DEFAULT_REVIEW, NOT_SELECTED, NOT_YET, OUTCOMES, Flag, Notice, group,
                      identification_label, notices, study_status)
 
+def xlsx_col(i: int) -> str:
+    """0 -> A, 25 -> Z, 26 -> AA."""
+    s = ""
+    i += 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
 CHECK_LABELS = {"1.1": "Retraction", "1.2": "Expression of concern / correction",
                 "1.3": "Authors' other retractions", "2.2": "Trial registration"}
 CHECK_QUESTIONS = {
@@ -311,7 +321,7 @@ class Assessment:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="xlsxwriter") as xw:
             sheets = {
-                "Summary": self.summary_table().drop(columns=["Group"]),
+                "Summary": self._summary_with_notices(),
                 "Notices": self.notices_table(),
                 "Authors": (lambda t: t.drop(columns=["key", "_papers", "_uids"]) if not t.empty else
                             pd.DataFrame({"Authors": ["No other retractions found for first or last authors."]}))(
@@ -329,8 +339,23 @@ class Assessment:
                    "Correction": wb.add_format({"bg_color": "#fde8b4"}),
                    "No notices found": wb.add_format({"bg_color": "#c9ecc9"})}
             self._overview_sheet(xw)
+            row_colors = {  # whole-row highlighting on the Summary sheet, by status
+                "#f4c7c7": ["Retracted", "Retracted and replaced", "Retraction notice in your list"],
+                "#f9d9cc": ["Expression of concern", "Expression of concern notice in your list"],
+                "#fde8b4": ["Correction", "Authors' other retractions", "Late registration", "Not a study record",
+                            "Correction notice in your list"],
+                "#e8e8e4": ["Possible match"],
+            }
             for name, df in sheets.items():
                 df.to_excel(xw, sheet_name=name, index=False)
+                if name == "Summary" and "Status" in df.columns and len(df):
+                    col = xlsx_col(list(df.columns).index("Status"))
+                    for color, statuses in row_colors.items():
+                        rf = wb.add_format({"bg_color": color})
+                        for stt in statuses:
+                            xw.sheets[name].conditional_format(
+                                1, 0, len(df), len(df.columns) - 1,
+                                {"type": "formula", "criteria": f'=${col}2="{stt}"', "format": rf})
                 ws = xw.sheets[name]
                 ws.freeze_panes(1, 0)
                 ws.autofilter(0, 0, max(len(df), 1), max(len(df.columns) - 1, 0))
@@ -342,6 +367,28 @@ class Assessment:
                                           {"type": "cell", "criteria": "==", "value": f'"{val}"', "format": f})
         return buf.getvalue()
 
+
+    def _summary_with_notices(self) -> pd.DataFrame:
+        """Summary for Excel: every study, and right below a study any notice from your reference list that was
+        merged into it (e.g. a retraction notice or corrigendum), so both records can be found in your library."""
+        summ = self.summary_table().drop(columns=["Group"])
+        if summ.empty:
+            return summ
+        rows = []
+        studies = {s.uid: s for s in self.studies}
+        for _, r in summ.iterrows():
+            rows.append({**r.to_dict(), "Linked to": ""})
+            for n in studies[r["ID"]].merged_notices:
+                rows.append({c: "" for c in summ.columns} | {
+                    "ID": n.get("uid") or "", "Status": f"{n['type']} notice in your list",
+                    "Study": f"Notice for {r['ID']} {r['Study']}", "Title": n.get("title") or "",
+                    "Journal": n.get("journal") or "", "Year": n.get("year") or "",
+                    "Why": f"This reference in your list is the {n['type'].lower()} notice for {r['ID']}; it was "
+                           "merged into that study (one decision for both).",
+                    "Reviewer decision": r["Reviewer decision"], "DOI": n.get("doi") or "",
+                    "Identification": "Notice in your list", "Source file": n.get("source_file") or "",
+                    "Linked to": r["ID"]})
+        return pd.DataFrame(rows, columns=list(summ.columns) + ["Linked to"])
 
     def _overview_sheet(self, xw):
         """First sheet: key numbers and three native Excel charts."""

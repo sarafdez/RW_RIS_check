@@ -500,7 +500,8 @@ def _merge_notice(s: Study, target: Study, info: RunInfo, merged: list):
     from .normalize import notice_kind
     target.merged_notices.append({
         "type": notice_kind(s.title, s.pub_types, (s.notice_for or {}).get("nature")),
-        "title": s.title, "doi": s.doi, "date": s.pub_date or (str(s.year) if s.year else None)})
+        "title": s.title, "doi": s.doi, "date": s.pub_date or (str(s.year) if s.year else None),
+        "uid": s.uid, "source_file": s.source_file, "journal": s.journal, "year": s.year})
     target.id_notes.append(f"Your list also contained a notice for this study ({s.uid}: {s.title}); "
                            "it was merged into this study.")
     info.duplicates.append(f"{s.uid} is a notice for {target.uid} (the original article); merged into {target.uid}.")

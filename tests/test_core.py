@@ -434,3 +434,22 @@ def test_free_text_title_first_order_and_truncated_title():
     rw, d = _run([s])
     m = d[s.uid].rw[0]
     assert m.method == "title_fuzzy" and m.strength == "probable"  # truncated title, author and year agree
+
+
+def test_excel_lists_merged_notice_below_its_study():
+    import io, openpyxl
+    from inspectsr.pipeline import Dossier, link_notices_by_title
+    corr = Study("S001", title="Retraction: Estimating the beginning of pregnancy in claims data",
+                 doi="10.3389/x.605076", design="Notice (not a study)", year=2020, source_file="lib.ris")
+    orig = Study("S002", title="Estimating the Beginning of Pregnancy in Claims Data", doi="10.3389/x.00350",
+                 year=2020, authors=["Schink, T"])
+    studies, info = [corr, orig], RunInfo(started="t", finished="t")
+    link_notices_by_title(studies, {"S001": Dossier(), "S002": Dossier()}, info)
+    rw, d = _run(studies)
+    a = Assessment(studies, {s.uid: run_checks(s, d[s.uid], rw) for s in studies}, info)
+    ws = openpyxl.load_workbook(io.BytesIO(a.to_excel()))["Summary"]
+    hdr = [c.value for c in ws[1]]
+    rows = [dict(zip(hdr, r)) for r in ws.iter_rows(min_row=2, values_only=True)]
+    assert [r["ID"] for r in rows] == ["S002", "S001"]
+    assert rows[0]["Status"] == "Retracted" and rows[1]["Status"] == "Retraction notice in your list"
+    assert rows[1]["Linked to"] == "S002" and rows[1]["Source file"] == "lib.ris"
