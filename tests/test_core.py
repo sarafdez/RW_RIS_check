@@ -445,7 +445,10 @@ def test_excel_lists_merged_notice_below_its_study():
                  year=2020, authors=["Schink, T"])
     studies, info = [corr, orig], RunInfo(started="t", finished="t")
     link_notices_by_title(studies, {"S001": Dossier(), "S002": Dossier()}, info)
-    rw, d = _run(studies)
+    from inspectsr.pipeline import match_rw
+    rw = _rw()
+    d = {s.uid: Dossier() for s in studies}  # keep the original IDs (no renumbering)
+    match_rw(studies, d, rw)
     a = Assessment(studies, {s.uid: run_checks(s, d[s.uid], rw) for s in studies}, info)
     ws = openpyxl.load_workbook(io.BytesIO(a.to_excel()))["Summary"]
     hdr = [c.value for c in ws[1]]
