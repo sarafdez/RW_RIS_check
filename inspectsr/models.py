@@ -117,7 +117,9 @@ class Study:
 
     @property
     def label(self) -> str:
-        fa = (self.first_author or (self.authors[0] if self.authors else "Unknown")).split(",")[0]
+        from .normalize import is_group_author, split_name
+        raw = self.first_author or (self.authors[0] if self.authors else "Unknown")
+        fa = raw if is_group_author(raw) or raw == "Unknown" else (split_name(raw)[0] or raw.split(",")[0])
         etal = " et al." if len(self.authors) > 1 else ""
         yr = f" {self.year}" if self.year else ""
         return f"{fa}{etal}{yr}"
