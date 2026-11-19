@@ -456,3 +456,18 @@ def test_excel_lists_merged_notice_below_its_study():
     assert [r["ID"] for r in rows] == ["S002", "S001"]
     assert rows[0]["Status"] == "Retracted" and rows[1]["Status"] == "Retraction notice in your list"
     assert rows[1]["Linked to"] == "S002" and rows[1]["Source file"] == "lib.ris"
+
+
+def test_excel_has_authors_other_papers_sheet():
+    import io, openpyxl
+    s = _smith()
+    rw, d = _run([s])
+    a = Assessment([s], {s.uid: run_checks(s, d[s.uid], rw)}, RunInfo(started="t", finished="t"))
+    key = a.authors_table().iloc[0]["key"]
+    a.author_reviews[key] = {"verdict": "Same person", "note": "same lab"}
+    wb = openpyxl.load_workbook(io.BytesIO(a.to_excel()))
+    assert "Authors' other papers" in wb.sheetnames and "Authors" in wb.sheetnames
+    ws = wb["Authors' other papers"]
+    hdr = [c.value for c in ws[1]]
+    rows = [dict(zip(hdr, r)) for r in ws.iter_rows(min_row=2, values_only=True)]
+    assert any(r["Other paper"].startswith("Another paper") and r["Your verdict"] == "Same person" for r in rows)
