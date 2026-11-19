@@ -379,6 +379,16 @@ def match_rw(studies: list[Study], dossiers: dict[str, Dossier], rw: RWIndex, pr
         for r in rw.find_by_doi(s.doi):
             d.rw.append(RWMatch(r, "doi"))
             seen.add(r)
+        if seen and not s.title:  # e.g. only a DOI was pasted: take the description from the Retraction Watch record
+            rec = rw.record(min(seen))
+            s.title = rec["title"] or None
+            if not s.authors:
+                s.authors = [a.strip() for a in str(rec["authors"]).split(";") if a.strip()]
+            s.journal = s.journal or rec["journal"] or None
+            if not s.year and rec["paper_date"]:
+                s.year = int(rec["paper_date"][:4])
+            s.design = detect_design(s.title, s.abstract, s.pub_types)
+            s.id_notes.append("Title, authors and journal taken from the Retraction Watch record.")
         for r in rw.find_by_pmid(s.pmid):
             if r in seen:
                 continue

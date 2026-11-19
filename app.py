@@ -543,7 +543,7 @@ def page_flagged():
         st.caption("Each notice is shown once, even when several databases report it. The databases keep only the "
                    "notice's title and citation: open the link to read the full notice on the journal's website.")
         for n in ns:
-            _notice_card(n)
+            _notice_card(n, a.run.sources)
     else:
         st.caption("None found.")
 
@@ -591,7 +591,24 @@ def page_flagged():
 MAIN_SOURCES = ["Retraction Watch", "Crossref", "PubMed", "OpenAlex"]
 
 
-def _notice_card(n):
+def _searched_sources(run_sources: dict, notice_type: str) -> list[str]:
+    """Which sources were actually searched for this kind of notice in this run."""
+    out = ["Retraction Watch"]
+    if "Crossref" in run_sources or ("Crossref notice list" in run_sources and notice_type != "Correction"):
+        out.append("Crossref")  # the downloaded list has retractions and expressions of concern, not corrections
+    if "PubMed" in run_sources:
+        out.append("PubMed")
+    if "OpenAlex" in run_sources and notice_type == "Retraction":
+        out.append("OpenAlex")  # OpenAlex only records whether a paper is retracted
+    return out
+
+
+def _linkify(text: str) -> str:
+    import re as _re
+    return _re.sub(r"(https?://[^\s;,)]+)", lambda m: f"[{m.group(1).split('//', 1)[1][:45]}… ↗]({m.group(1)})", text)
+
+
+def _notice_card(n, run_sources: dict | None = None):
     _, color, ic, _ = STATUS_INFO[{"Retraction": "Retracted", "Expression of concern": "Expression of concern",
                                        "Correction": "Correction"}.get(n.type, "Correction")]
     with st.container(border=True):
@@ -602,9 +619,10 @@ def _notice_card(n):
         if n.title:
             st.markdown(f"**Notice:** {n.title}")
         found = []
+        searched = _searched_sources(run_sources or {}, n.type) if run_sources is not None else MAIN_SOURCES
         for src in MAIN_SOURCES:
-            if src == "OpenAlex" and n.type != "Retraction":
-                continue  # OpenAlex only records whether a paper is retracted
+            if src not in searched:
+                continue
             if src == "Crossref":
                 hit = "Crossref" in n.sources
                 only_copy = not hit and "Crossref (from RW)" in n.sources
@@ -613,11 +631,14 @@ def _notice_card(n):
                 found.append(f"{'✓' if src in n.sources else '✗'} {src}")
         if "Your reference list" in n.sources:
             found.insert(0, "✓ your reference list (the reference is the notice itself)")
-        st.markdown("**Found in:** " + " · ".join(found))
+        not_searched = [x for x in MAIN_SOURCES if x not in searched and not (x == "OpenAlex" and n.type != "Retraction")]
+        st.markdown("**Found in:** " + " · ".join(found)
+                    + (f" <span class='muted'>· not searched for this kind of notice in this check type: {', '.join(not_searched)}</span>"
+                       if not_searched else ""), unsafe_allow_html=True)
         if n.reasons:
             st.markdown("**Reasons (Retraction Watch):** " + "; ".join(n.reasons))
         if n.note:
-            st.markdown(f"**Retraction Watch note:** {n.note}")
+            st.markdown(f"**Note from the Retraction Watch record:** {_linkify(n.note)}")
         links = []
         doi_links = [l for l in n.links if "doi.org" in l]
         pm_links = [l for l in n.links if "pubmed" in l]
