@@ -323,11 +323,10 @@ class Assessment:
             sheets = {
                 "Summary": self._summary_with_notices(),
                 "Notices": self.notices_table(),
-                "Authors": self._authors_sheet(),
-                "Authors' other papers": self.author_papers_table(),
                 "Not identified": self.not_identified_table(),
                 "Checks": self.checks_table(),
-                "Evidence": self.evidence_table(),
+                # only records about your own references: leave out the authors' other papers
+                "Evidence": (lambda e: e[e["Check"] != CHECK_LABELS["1.3"]])(self.evidence_table()),
                 "Provenance": self.provenance_table(),
                 "Methods text": pd.DataFrame({"Methods text (draft)": [self.methods_text()]}),
             }
@@ -347,14 +346,6 @@ class Assessment:
             }
             for name, df in sheets.items():
                 df.to_excel(xw, sheet_name=name, index=False)
-                if name in ("Authors", "Authors' other papers") and "Your verdict" in df.columns and len(df):
-                    col = xlsx_col(list(df.columns).index("Your verdict"))
-                    for color, verdict in (("#f4c7c7", "Same person"), ("#e8e8e4", "Different person"),
-                                           ("#fde8b4", "Unsure")):
-                        xw.sheets[name].conditional_format(
-                            1, 0, len(df), len(df.columns) - 1,
-                            {"type": "formula", "criteria": f'=${col}2="{verdict}"',
-                             "format": wb.add_format({"bg_color": color})})
                 if name == "Summary" and "Status" in df.columns and len(df):
                     col = xlsx_col(list(df.columns).index("Status"))
                     for color, statuses in row_colors.items():
@@ -374,43 +365,6 @@ class Assessment:
                                           {"type": "cell", "criteria": "==", "value": f'"{val}"', "format": f})
         return buf.getvalue()
 
-
-    def _authors_sheet(self) -> pd.DataFrame:
-        t = self.authors_table()
-        if t.empty:
-            return pd.DataFrame({"Authors": ["No other retractions found for the first or last authors."]})
-        t = t.drop(columns=["key", "_papers", "_uids", "Other papers"]).rename(
-            columns={"Flagged lead": "Strong match (shared co-author / author ID)"})
-        return t
-
-    def author_papers_table(self) -> pd.DataFrame:
-        """One row per other retracted paper, for authors that are strong matches or that you gave a verdict.
-        Name-only matches you did not review are left out (often hundreds of papers by namesakes)."""
-        from .status import AUTHOR_UNCHECKED
-        cols = ["Author", "Your verdict", "Note", "Strong match", "Studies in your review", "Other paper",
-                "Notice", "Year", "Integrity-related", "Shares co-authors with your study",
-                "Reasons (Retraction Watch)", "Found in", "Link"]
-        t = self.authors_table()
-        rows = []
-        if not t.empty:
-            for _, r in t.iterrows():
-                if not r["Flagged lead"] and r["Your verdict"] == AUTHOR_UNCHECKED:
-                    continue
-                papers = sorted(r["_papers"], key=lambda p: (not p.get("shared_coauthor"), not p["integrity"],
-                                                             str(p["date"] or "")))
-                for p in papers:
-                    rows.append({"Author": r["Author"], "Your verdict": r["Your verdict"], "Note": r["Note"],
-                                 "Strong match": "Yes" if r["Flagged lead"] else "No",
-                                 "Studies in your review": r["Studies in your review"], "Other paper": p["title"],
-                                 "Notice": p["nature"], "Year": str(p["date"] or "")[:4],
-                                 "Integrity-related": "Yes" if p["integrity"] else "No",
-                                 "Shares co-authors with your study": "Yes" if p.get("shared_coauthor") else "",
-                                 "Reasons (Retraction Watch)": "; ".join(p["reasons"]), "Found in": p["source"],
-                                 "Link": p.get("notice") or ""})
-        if not rows:
-            return pd.DataFrame({"Authors' other papers": ["No authors with other retractions to list (strong matches "
-                                                           "or authors you reviewed)."]})
-        return pd.DataFrame(rows, columns=cols)
 
     def _summary_with_notices(self) -> pd.DataFrame:
         """Summary for Excel: every study, and right below a study any notice from your reference list that was
@@ -450,12 +404,6 @@ class Assessment:
                 ("Excluded", int(oc.get("Confirmed – exclude", 0))), ("Kept", int(oc.get("Confirmed – keep", 0))),
                 ("False matches", int(oc.get("False match – ignore", 0))),
                 ("Not identified (title check only)", sum(not s.identified for s in self.studies))]
-        at = self.authors_table()
-        if not at.empty:
-            leads = at[at["Flagged lead"]]
-            nums += [("Authors with other retractions (strong matches)", len(leads)),
-                     ("   confirmed as the same person", int((at["Your verdict"] == "Same person").sum())),
-                     ("   ruled out (different person)", int((at["Your verdict"] == "Different person").sum()))]
         for i, (k, v) in enumerate(nums):
             ws.write(3 + i, 0, k)
             ws.write(3 + i, 1, v, bold)
@@ -471,7 +419,7 @@ class Assessment:
             return row + len(df), col
 
         # 1. review outcomes
-        r0 = 19
+        r0 = 15
         oc_df = self.outcome_counts()
         ws.write(r0 - 1, 0, "Review of flagged studies", bold)
         last, _ = table(oc_df, r0, 0)
